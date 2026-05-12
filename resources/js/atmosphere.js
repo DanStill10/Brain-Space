@@ -1,10 +1,7 @@
 import { Particle } from './models/Particle.js';
 import { IdeaNode } from './models/IdeaNode.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// --- Global State ---
+// --- Global State & DOM Elements ---
 const canvas = document.getElementById('atmosphere');
 const ctx = canvas.getContext('2d');
 const modal = document.getElementById('goal-modal');
@@ -19,7 +16,6 @@ const statusDisplay = document.getElementById('user-id-display');
 let width, height;
 let ideas = [];
 let ambientParticles = [];
-let currentUser = null;
 
 // --- Canvas Initialization ---
 function resize() {
@@ -33,7 +29,7 @@ resize();
 
 function initParticles() {
     ambientParticles = [];
-    for(let i=0; i<150; i++) {
+    for(let i = 0; i < 150; i++) {
         ambientParticles.push(new Particle(width, height));
     }
 }
@@ -46,12 +42,8 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
-// --- Firebase Configuration ---
-// Note: In production, these should be loaded from your .env variables via Vite
-const firebaseConfig = { /* Your config here */ };
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Start the animation loop immediately
+animate();
 
 // --- UI Interaction Logic ---
 function showModal() {
@@ -76,72 +68,88 @@ canvas.addEventListener('click', () => {
     if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) hideModal();
 });
 
-// Form Submission -> Database
+// --- Database Interaction (Laravel API) ---
+
+// 1. Fetch existing ideas when the app opens
+async function loadIdeas() {
+    try {
+        statusDisplay.innerText = "Loading local data...";
+        
+        // This hits your local Laravel route
+        const response = await fetch('/api/ideas'); 
+        
+        if (!response.ok) throw new Error("Backend not ready yet");
+        
+        const data = await response.json();
+        
+        data.forEach(item => {
+            ideas.push(new IdeaNode(item.id, item.text, width/2, height/2 + 50, item.color, item.priority, ctx));
+        });
+
+        if (ideas.length > 0) {
+            hideModal();
+        } else {
+            showModal();
+        }
+        statusDisplay.innerText = "Local SQLite Synced";
+
+    } catch (error) {
+        console.warn("Laravel API not connected yet. Running purely in memory.", error);
+        statusDisplay.innerText = "Memory Mode (API Offline)";
+        // If API fails, just show the modal so we can still play with it
+        if(ideas.length === 0) showModal(); 
+    }
+}
+
+// 2. Save a new idea
 form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+    e.preventDefault(); 
+    
     const text = input.value.trim();
     const color = colorInput.value;
     const priority = parseInt(priorityInput.value) || 0;
     const submitBtn = document.getElementById('submit-btn');
     
-    if (text && currentUser) {
+    if (text) {
         submitBtn.innerText = "Saving...";
         submitBtn.disabled = true;
 
+        const newIdeaData = { text, color, priority };
+
         try {
-            const ideasRef = collection(db, 'artifacts', 'default-app-id', 'users', currentUser.uid, 'ideas');
-            await addDoc(ideasRef, { text, color, priority, createdAt: Date.now() });
-            hideModal();
-            submitBtn.innerText = "Add to Atmosphere";
-            submitBtn.disabled = false;
-        } catch (error) {
-            submitBtn.innerText = "Error Saving!";
-            submitBtn.classList.replace('bg-blue-500', 'bg-red-500');
-            submitBtn.classList.replace('hover:bg-blue-400', 'hover:bg-red-400');
-            setTimeout(() => {
-                submitBtn.innerText = "Add to Atmosphere";
-                submitBtn.classList.replace('bg-red-500', 'bg-blue-500');
-                submitBtn.classList.replace('hover:bg-red-400', 'hover:bg-blue-400');
-                submitBtn.disabled = false;
-            }, 3000);
-        } 
-    }
-});
-
-// --- Auth & Database Sync Listener ---
-const initAuth = async () => {
-    try { await signInAnonymously(auth); } 
-    catch (err) { statusDisplay.innerText = "Auth Error"; }
-};
-
-onAuthStateChanged(auth, (user) => {
-    currentUser = user;
-    if (user) {
-        statusDisplay.innerText = `Synced (User: ${user.uid.substring(0,6)}...)`;
-        const ideasRef = collection(db, 'artifacts', 'default-app-id', 'users', user.uid, 'ideas');
-        
-        onSnapshot(ideasRef, (snapshot) => {
-            const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            fetchedDocs.forEach(data => {
-                if (!ideas.find(i => i.id === data.id)) {
-                    ideas.push(new IdeaNode(data.id, data.text, width/2, height/2 + 50, data.color, data.priority, ctx));
-                }
+            // Send the data to Laravel to save in SQLite
+            const response = await fetch('/api/ideas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    // Optional: If using standard web routes instead of API, you need a CSRF token
+                    // 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify(newIdeaData)
             });
 
-            ideas = ideas.filter(idea => fetchedDocs.find(d => d.id === idea.id));
+            if (!response.ok) throw new Error("Failed to save to database");
+            
+            const savedItem = await response.json();
+            
+            // Add the officially saved item (with its new SQLite ID) to the canvas
+            ideas.push(new IdeaNode(savedItem.id, savedItem.text, width/2, height/2 + 50, savedItem.color, savedItem.priority, ctx));
+            hideModal();
 
-            if (ideas.length > 0) {
-                hideModal();
-            } else if (modal.classList.contains('hidden-animate')) {
-                showModal();
-                cancelBtn.classList.add('hidden');
-            }
-        });
+        } catch (error) {
+            console.error(error);
+            
+            // Fallback for while you are developing: Just push it to the canvas anyway!
+            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, width/2, height/2 + 50, color, priority, ctx));
+            hideModal();
+            
+        } finally {
+            submitBtn.innerText = "Add to Atmosphere";
+            submitBtn.disabled = false;
+        }
     }
 });
 
-// Start System
-initAuth();
-input.focus();
-animate();
+// Boot up!
+loadIdeas();
