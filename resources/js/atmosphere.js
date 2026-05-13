@@ -11,11 +11,13 @@ const colorInput = document.getElementById('goal-color');
 const priorityInput = document.getElementById('goal-priority');
 const addBtn = document.getElementById('add-btn');
 const cancelBtn = document.getElementById('cancel-btn');
-const statusDisplay = document.getElementById('user-id-display');
 
 let width, height;
 let ideas = [];
 let ambientParticles = [];
+
+// Helper to grab Laravel's security token (Still needed for secure local POST requests)
+const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
 // --- Canvas Initialization ---
 function resize() {
@@ -68,14 +70,10 @@ canvas.addEventListener('click', () => {
     if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) hideModal();
 });
 
-// --- Database Interaction (Laravel API) ---
+// --- Database Interaction (Ideas API) ---
 
-// 1. Fetch existing ideas when the app opens
 async function loadIdeas() {
     try {
-        statusDisplay.innerText = "Loading local data...";
-        
-        // This hits your local Laravel route
         const response = await fetch('/api/ideas'); 
         
         if (!response.ok) throw new Error("Backend not ready yet");
@@ -89,19 +87,16 @@ async function loadIdeas() {
         if (ideas.length > 0) {
             hideModal();
         } else {
-            showModal();
+            // Welcome Experience: If the database is completely empty, pop the modal open automatically!
+            showModal(); 
         }
-        statusDisplay.innerText = "Local SQLite Synced";
 
     } catch (error) {
-        console.warn("Laravel API not connected yet. Running purely in memory.", error);
-        statusDisplay.innerText = "Memory Mode (API Offline)";
-        // If API fails, just show the modal so we can still play with it
+        console.warn("API not connected yet. Running purely in memory.", error);
         if(ideas.length === 0) showModal(); 
     }
 }
 
-// 2. Save a new idea
 form.addEventListener('submit', async (e) => {
     e.preventDefault(); 
     
@@ -117,14 +112,12 @@ form.addEventListener('submit', async (e) => {
         const newIdeaData = { text, color, priority };
 
         try {
-            // Send the data to Laravel to save in SQLite
             const response = await fetch('/api/ideas', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    // Optional: If using standard web routes instead of API, you need a CSRF token
-                    // 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    'X-CSRF-TOKEN': getCsrfToken() 
                 },
                 body: JSON.stringify(newIdeaData)
             });
@@ -132,18 +125,13 @@ form.addEventListener('submit', async (e) => {
             if (!response.ok) throw new Error("Failed to save to database");
             
             const savedItem = await response.json();
-            
-            // Add the officially saved item (with its new SQLite ID) to the canvas
             ideas.push(new IdeaNode(savedItem.id, savedItem.text, width/2, height/2 + 50, savedItem.color, savedItem.priority, ctx));
             hideModal();
 
         } catch (error) {
             console.error(error);
-            
-            // Fallback for while you are developing: Just push it to the canvas anyway!
             ideas.push(new IdeaNode(`temp-${Date.now()}`, text, width/2, height/2 + 50, color, priority, ctx));
             hideModal();
-            
         } finally {
             submitBtn.innerText = "Add to Atmosphere";
             submitBtn.disabled = false;
@@ -151,5 +139,7 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-// Boot up!
+// --- Boot Sequence ---
+
+// Jump straight to loading ideas, no auth checks needed!
 loadIdeas();

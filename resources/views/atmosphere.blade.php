@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Idea Atmosphere</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Brain Space</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -14,11 +15,6 @@
     <canvas id="atmosphere"></canvas>
 
     <div id="ui-layer">
-        
-        <div id="sync-status">
-            <div class="pulse"></div>
-            <span id="user-id-display">Connecting...</span>
-        </div>
 
         <div id="goal-modal" class="modal w-11/12 max-w-md rounded-2xl p-6 shadow-2xl text-white">
             <h2 class="text-2xl font-semibold mb-2 tracking-tight">What's a goal of yours right now?</h2>

@@ -13,10 +13,6 @@ return new class extends Migration
     {
         Schema::create('ideas', function (Blueprint $table) {
             $table->id();
-            
-            // This is the magic link! It connects this Idea to a specific User.
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            
             // Your Idea properties
             $table->string('text');
             $table->string('color')->nullable();
