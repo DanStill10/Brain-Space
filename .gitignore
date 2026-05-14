@@ -24,3 +24,16 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local Databases (CRITICAL FOR NATIVE APP)
+database/database.sqlite
+database/database.sqlite-journal
+database/database.sqlite-wal
+*.db
+*.sqlite
+
+# Laravel Framework Caches (Keeps your repo lightweight)
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+/bootstrap/cache/
