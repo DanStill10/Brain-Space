@@ -15,8 +15,9 @@ const cancelBtn = document.getElementById('cancel-btn');
 let width, height;
 let ideas = [];
 let ambientParticles = [];
+let draggedIdea = null; // Track the currently dragged bubble
 
-// Helper to grab Laravel's security token (Still needed for secure local POST requests)
+// Helper to grab Laravel's security token (Still needed for secure local POST/PUT requests)
 const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
 // --- Canvas Initialization ---
@@ -66,9 +67,106 @@ function hideModal() {
 
 cancelBtn.addEventListener('click', hideModal);
 addBtn.addEventListener('click', showModal);
-canvas.addEventListener('click', () => {
-    if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) hideModal();
-});
+
+// --- Drag and Drop Physics (Mouse & Touch Supported) ---
+
+// Helper to grab exact X/Y whether it's a mouse click or a screen tap
+function getPointerPos(e) {
+    if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    return { x: e.clientX, y: e.clientY };
+}
+
+function handleStart(e) {
+    // Close the modal if it's open
+    if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) {
+        hideModal();
+        return;
+    }
+
+    const pos = getPointerPos(e);
+
+    // Loop backward to grab the bubble drawn "on top" first
+    for (let i = ideas.length - 1; i >= 0; i--) {
+        const idea = ideas[i];
+        const dist = Math.hypot(idea.x - pos.x, idea.y - pos.y);
+        
+        if (dist < idea.radius) {
+            draggedIdea = idea;
+            idea.isDragging = true;
+            // Prevent screen scrolling only if they actually grabbed a bubble
+            if(e.cancelable) e.preventDefault(); 
+            break;
+        }
+    }
+}
+
+function handleMove(e) {
+    if (draggedIdea) {
+        if(e.cancelable) e.preventDefault(); // Stop screen from pulling while dragging
+        const pos = getPointerPos(e);
+        draggedIdea.x = pos.x;
+        draggedIdea.y = pos.y;
+    }
+}
+
+async function handleEnd(e) {
+    if (draggedIdea) {
+        draggedIdea.isDragging = false;
+
+        // Check if we dropped it onto another bubble!
+        for (let i = 0; i < ideas.length; i++) {
+            const targetIdea = ideas[i];
+            
+            if (targetIdea !== draggedIdea) {
+                const dist = Math.hypot(draggedIdea.x - targetIdea.x, draggedIdea.y - targetIdea.y);
+                
+                // Collision! Target swallows Dragged
+                if (dist < targetIdea.radius + draggedIdea.radius) {
+                    
+                    // --- THE ANTI-INCEPTION GUARD ---
+                    // If the dragged idea has children, it is a parent! 
+                    // We immediately break out of this loop so it bounces off instead of merging.
+                    if (draggedIdea.children && draggedIdea.children.length > 0) {
+                        break; 
+                    }
+                    
+                    targetIdea.absorb(draggedIdea);
+                    ideas = ideas.filter(node => node.id !== draggedIdea.id);
+                    
+                    try {
+                        await fetch(`/api/ideas/${draggedIdea.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': getCsrfToken()
+                            },
+                            body: JSON.stringify({ parent_id: targetIdea.id })
+                        });
+                    } catch (err) {
+                        console.error("Failed to merge in database", err);
+                    }
+                    
+                    break; 
+                }
+            }
+        }
+        draggedIdea = null;
+    }
+}
+
+// Attach listeners for Mouse
+canvas.addEventListener('mousedown', handleStart);
+canvas.addEventListener('mousemove', handleMove);
+canvas.addEventListener('mouseup', handleEnd);
+
+// Attach listeners for Touch (Passive: false allows us to use e.preventDefault() to stop scrolling)
+canvas.addEventListener('touchstart', handleStart, { passive: false });
+canvas.addEventListener('touchmove', handleMove, { passive: false });
+canvas.addEventListener('touchend', handleEnd);
+canvas.addEventListener('touchcancel', handleEnd); // In case a phone call interrupts the drag!
 
 // --- Database Interaction (Ideas API) ---
 
@@ -81,13 +179,21 @@ async function loadIdeas() {
         const data = await response.json();
         
         data.forEach(item => {
-            ideas.push(new IdeaNode(item.id, item.text, width/2, height/2 + 50, item.color, item.priority, ctx));
+            const newParent = new IdeaNode(item.id, item.text, width/2, height/2 + 50, item.color, item.priority, ctx);
+            
+            // PRE-ABSORB CHILDREN: If this idea has lava inside it from the database, load it in!
+            if (item.children && item.children.length > 0) {
+                item.children.forEach(child => {
+                    newParent.absorb(child);
+                });
+            }
+            
+            ideas.push(newParent);
         });
 
         if (ideas.length > 0) {
             hideModal();
         } else {
-            // Welcome Experience: If the database is completely empty, pop the modal open automatically!
             showModal(); 
         }
 
@@ -140,6 +246,4 @@ form.addEventListener('submit', async (e) => {
 });
 
 // --- Boot Sequence ---
-
-// Jump straight to loading ideas, no auth checks needed!
 loadIdeas();

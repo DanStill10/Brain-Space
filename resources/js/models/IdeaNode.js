@@ -44,86 +44,124 @@ export class IdeaNode {
         this.y = y;
         this.priority = priority || 0;
         
+        // Radius Animation Setup
         this.baseRadius = Math.max(50, Math.min(95, text.length * 2.5)) + (this.priority * 4);
-        this.radius = 0;
+        this.radius = 0; 
         this.targetRadius = this.baseRadius;
 
+        // Physics
         this.vx = (Math.random() - 0.5) * 2;
         this.vy = (Math.random() - 0.5) * 2;
-        this.maxSpeed = Math.random() * 0.4 + 0.6;
-        this.wanderAngle = Math.random() * Math.PI * 2;
-
-        const selectedTheme = colorTheme ? colorTheme : colorKeys[Math.floor(Math.random() * colorKeys.length)];
+        
+        // Colors
+        const selectedTheme = colorTheme && colorMap[colorTheme] ? colorTheme : colorKeys[Math.floor(Math.random() * colorKeys.length)];
         const colorSet = colorMap[selectedTheme];
         this.colorStart = colorSet[0];
         this.colorEnd = colorSet[1];
         
         const maxTextWidth = this.baseRadius * 1.6; 
         this.lines = wrapText(ctx, this.text, maxTextWidth, 3); 
+
+        // Drag & Lava Setup
+        this.isDragging = false;
+        this.children = [];
     }
 
-    update(ideasArray, canvasWidth, canvasHeight) {
-        if (this.radius < this.targetRadius) {
-            this.radius += (this.targetRadius - this.radius) * 0.1;
+    absorb(childNode) {
+        // --- PERSISTENCE FIX ---
+        // If childNode is a live bubble, it has colorStart. 
+        // If it's loaded from the DB, it only has a 'color' string (e.g., 'blue').
+        let cStart = childNode.colorStart;
+        let cEnd = childNode.colorEnd;
+
+        if (!cStart || !cEnd) {
+            // Rebuild the colors from the database theme string
+            const theme = childNode.color && colorMap[childNode.color] ? childNode.color : 'blue';
+            cStart = colorMap[theme][0];
+            cEnd = colorMap[theme][1];
         }
 
-        this.wanderAngle += (Math.random() - 0.5) * 0.4;
-        let forceX = Math.cos(this.wanderAngle) * 0.05;
-        let forceY = Math.sin(this.wanderAngle) * 0.05;
+        this.children.push({
+            id: childNode.id,
+            text: childNode.text,
+            colorStart: cStart,
+            colorEnd: cEnd,
+            radius: 18,
+            offsetX: (Math.random() - 0.5) * 20,
+            offsetY: (Math.random() - 0.5) * 20,
+            dx: (Math.random() - 0.5) * 1.5,
+            dy: (Math.random() - 0.5) * 1.5
+        });
 
-        const margin = this.radius + 50; 
-        if (this.x < margin) forceX += 0.1;
-        if (this.x > canvasWidth - margin) forceX -= 0.1;
-        if (this.y < margin) forceY += 0.1;
-        if (this.y > canvasHeight - margin) forceY -= 0.1;
+        // Increase target radius so it slowly grows!
+        this.targetRadius = this.baseRadius + (this.children.length * 10);
+    }
 
-        this.vx += forceX;
-        this.vy += forceY;
+    update(ideasArray, width, height) {
+        // Pop-in animation: Grow radius smoothly toward target!
+        this.radius += (this.targetRadius - this.radius) * 0.1;
 
-        this.vx *= 0.98;
-        this.vy *= 0.98;
-
-        for (let other of ideasArray) {
-            if (other === this) continue;
+        if (!this.isDragging) {
+            this.x += this.vx;
+            this.y += this.vy;
             
-            const dx = this.x - other.x;
-            const dy = this.y - other.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const minDistance = this.radius + other.radius + 10; 
+            // Wall bounce
+            if (this.x + this.radius > width || this.x - this.radius < 0) this.vx *= -1;
+            if (this.y + this.radius > height || this.y - this.radius < 0) this.vy *= -1;
 
-            if (distance < minDistance) {
-                const angle = Math.atan2(dy, dx);
-                const force = (minDistance - distance) * 0.05;
-                const ax = Math.cos(angle) * force;
-                const ay = Math.sin(angle) * force;
+            // Bubble-to-Bubble Collision Math
+            for (let other of ideasArray) {
+                if (other !== this && !other.isDragging) {
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const minDistance = this.radius + other.radius;
 
-                this.vx += ax;
-                this.vy += ay;
-                other.vx -= ax;
-                other.vy -= ay;
+                    if (distance < minDistance) {
+                        // Push apart slightly
+                        const angle = Math.atan2(dy, dx);
+                        const overlap = minDistance - distance;
+                        this.x -= overlap * Math.cos(angle) * 0.5;
+                        this.y -= overlap * Math.sin(angle) * 0.5;
+                        other.x += overlap * Math.cos(angle) * 0.5;
+                        other.y += overlap * Math.sin(angle) * 0.5;
+                        
+                        // Simple velocity swap for bouncing
+                        const tempVx = this.vx;
+                        const tempVy = this.vy;
+                        this.vx = other.vx;
+                        this.vy = other.vy;
+                        other.vx = tempVx;
+                        other.vy = tempVy;
+                    }
+                }
             }
         }
 
-        const speedSq = this.vx * this.vx + this.vy * this.vy;
-        if (speedSq > this.maxSpeed * this.maxSpeed) {
-            const speed = Math.sqrt(speedSq);
-            this.vx = (this.vx / speed) * this.maxSpeed;
-            this.vy = (this.vy / speed) * this.maxSpeed;
+        // Internal Lava Physics
+        if (this.children.length > 0) {
+            this.children.forEach(child => {
+                child.offsetX += child.dx;
+                child.offsetY += child.dy;
+
+                const distFromCenter = Math.sqrt(child.offsetX * child.offsetX + child.offsetY * child.offsetY);
+                
+                // If lava hits inner glass, bounce it
+                if (distFromCenter > this.radius - child.radius - 4) {
+                    child.dx *= -1;
+                    child.dy *= -1;
+                }
+            });
         }
-
-        this.x += this.vx;
-        this.y += this.vy;
-
-        if (this.x - this.radius < 0) { this.x = this.radius; this.vx *= -1; }
-        if (this.x + this.radius > canvasWidth) { this.x = canvasWidth - this.radius; this.vx *= -1; }
-        if (this.y - this.radius < 0) { this.y = this.radius; this.vy *= -1; }
-        if (this.y + this.radius > canvasHeight) { this.y = canvasHeight - this.radius; this.vy *= -1; }
     }
 
     draw(ctx) {
+        if (this.radius < 1) return; // Prevent crashing while invisible
+
         ctx.shadowColor = this.colorStart;
         ctx.shadowBlur = 20;
 
+        // Base gradient
         const gradient = ctx.createLinearGradient(
             this.x - this.radius, this.y - this.radius, 
             this.x + this.radius, this.y + this.radius
@@ -133,25 +171,71 @@ export class IdeaNode {
 
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
+
+        if (this.children.length > 0) {
+            // LAVA LAMP MODE
+            ctx.globalAlpha = 0.2; // Make the parent glass translucent
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            ctx.globalAlpha = 0.7; // Outline for glass rim
+            ctx.strokeStyle = this.colorStart;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.globalAlpha = 1.0; // Reset alpha for internal lava
+            ctx.shadowBlur = 0;
+
+            // Draw children (Lava blobs) inside
+            this.children.forEach(child => {
+                const childGrad = ctx.createLinearGradient(
+                    this.x + child.offsetX - child.radius, this.y + child.offsetY - child.radius, 
+                    this.x + child.offsetX + child.radius, this.y + child.offsetY + child.radius
+                );
+                childGrad.addColorStop(0, child.colorStart);
+                childGrad.addColorStop(1, child.colorEnd);
+
+                ctx.beginPath();
+                ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
+                ctx.fillStyle = childGrad;
+                ctx.fill();
+            });
+
+        } else {
+            // NORMAL SOLO MODE
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
 
         ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1.0;
 
+        // Draw Text & Badges if big enough
         if (this.radius > 20) {
-            ctx.fillStyle = 'white';
-            ctx.font = '500 14px system-ui';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
             const lineHeight = 18; 
             const totalHeight = this.lines.length * lineHeight;
+            
+            // We no longer move the text up! It stays dead center.
             const startY = this.y - (totalHeight / 2) + (lineHeight / 2);
 
+            // --- THE READABILITY TRICK ---
+            ctx.font = '500 14px system-ui';
+            ctx.lineWidth = 4; // Thick outline
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // Semi-transparent black outline
+            ctx.fillStyle = 'white'; // Solid white core
+
             this.lines.forEach((line, index) => {
-                ctx.fillText(line, this.x, startY + (index * lineHeight));
+                const lineY = startY + (index * lineHeight);
+                // Draw the dark outline FIRST
+                ctx.strokeText(line, this.x, lineY);
+                // Draw the white text on top of the outline
+                ctx.fillText(line, this.x, lineY);
             });
 
+            // Draw Priority Badge (Unchanged)
             if (this.priority > 0) {
                 const badgeRadius = 10;
                 const angle = -Math.PI / 4; 

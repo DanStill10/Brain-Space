@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             // Your Idea properties
             $table->string('text');
+            $table->foreignId('parent_id')->nullable()->constrained('ideas')->cascadeOnDelete();
             $table->string('color')->nullable();
             $table->integer('priority')->default(0);
             
