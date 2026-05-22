@@ -15,6 +15,11 @@
     <canvas id="atmosphere"></canvas>
 
     <div id="ui-layer">
+        
+        <!-- The Escape Hatch (Moved OUTSIDE the modal!) -->
+        <button type="button" id="back-btn" class="hidden pointer-events-auto absolute top-4 left-4 bg-slate-800 border-2 border-slate-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg z-[100] transition-all hover:bg-slate-700">
+            ← Back to Atmosphere
+        </button>
 
         <div id="goal-modal" class="modal w-11/12 max-w-md rounded-2xl p-6 shadow-2xl text-white">
             <h2 class="text-2xl font-semibold mb-2 tracking-tight">What's a goal of yours right now?</h2>

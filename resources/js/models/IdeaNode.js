@@ -155,7 +155,7 @@ export class IdeaNode {
         }
     }
 
-    draw(ctx) {
+    draw(ctx, currentZoom = 1) {
         if (this.radius < 1) return; // Prevent crashing while invisible
 
         ctx.shadowColor = this.colorStart;
@@ -172,21 +172,28 @@ export class IdeaNode {
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
 
+        // --- THE GOOGLE EARTH EFFECT ---
+        // As the camera zooms past 2.0x, the text and rim fade away like clouds!
+        let surfaceAlpha = 1.0;
+        if (currentZoom > 1.5) {
+            surfaceAlpha = Math.max(0, 1.0 - ((currentZoom - 1.5) * 0.5));
+        }
+
         if (this.children.length > 0) {
             // LAVA LAMP MODE
-            ctx.globalAlpha = 0.2; // Make the parent glass translucent
+            ctx.globalAlpha = 0.2; // Background glass
             ctx.fillStyle = gradient;
             ctx.fill();
             
-            ctx.globalAlpha = 0.7; // Outline for glass rim
+            ctx.globalAlpha = 0.7 * surfaceAlpha; // Rim fades out when zoomed
             ctx.strokeStyle = this.colorStart;
             ctx.lineWidth = 3;
             ctx.stroke();
 
-            ctx.globalAlpha = 1.0; // Reset alpha for internal lava
+            ctx.globalAlpha = 1.0; 
             ctx.shadowBlur = 0;
 
-            // Draw children (Lava blobs) inside
+            // Draw children (Lava blobs) inside - These DO NOT fade out!
             this.children.forEach(child => {
                 const childGrad = ctx.createLinearGradient(
                     this.x + child.offsetX - child.radius, this.y + child.offsetY - child.radius, 
@@ -210,32 +217,29 @@ export class IdeaNode {
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1.0;
 
-        // Draw Text & Badges if big enough
-        if (this.radius > 20) {
+        // Draw Text & Badges (Fades out when zooming)
+        if (this.radius > 20 && surfaceAlpha > 0) {
+            ctx.globalAlpha = surfaceAlpha; // Apply the cloud fade
+            
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
             const lineHeight = 18; 
             const totalHeight = this.lines.length * lineHeight;
-            
-            // We no longer move the text up! It stays dead center.
             const startY = this.y - (totalHeight / 2) + (lineHeight / 2);
 
-            // --- THE READABILITY TRICK ---
             ctx.font = '500 14px system-ui';
-            ctx.lineWidth = 4; // Thick outline
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // Semi-transparent black outline
-            ctx.fillStyle = 'white'; // Solid white core
+            ctx.lineWidth = 4; 
+            ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * surfaceAlpha})`; 
+            ctx.fillStyle = 'white'; 
 
             this.lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
-                // Draw the dark outline FIRST
                 ctx.strokeText(line, this.x, lineY);
-                // Draw the white text on top of the outline
                 ctx.fillText(line, this.x, lineY);
             });
 
-            // Draw Priority Badge (Unchanged)
+            // Draw Priority Badge
             if (this.priority > 0) {
                 const badgeRadius = 10;
                 const angle = -Math.PI / 4; 
@@ -255,6 +259,8 @@ export class IdeaNode {
                 ctx.font = 'bold 11px system-ui';
                 ctx.fillText(this.priority.toString(), badgeX, badgeY);
             }
+            
+            ctx.globalAlpha = 1.0; // Reset alpha for the next bubble
         }
     }
 }
