@@ -37,12 +37,13 @@ export function wrapText(context, text, maxWidth, maxLines) {
 }
 
 export class IdeaNode {
-    constructor(dbId, text, x, y, colorTheme, priority, ctx) {
+    constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt) {
         this.id = dbId; 
         this.text = text;
         this.x = x;
         this.y = y;
         this.priority = priority || 0;
+        this.lastInteractedAt = lastInteractedAt ? new Date(lastInteractedAt) : new Date();
         
         // Radius Animation Setup
         this.baseRadius = Math.max(50, Math.min(95, text.length * 2.5)) + (this.priority * 4);
@@ -55,6 +56,7 @@ export class IdeaNode {
         
         // Colors
         const selectedTheme = colorTheme && colorMap[colorTheme] ? colorTheme : colorKeys[Math.floor(Math.random() * colorKeys.length)];
+        this.colorTheme = selectedTheme;
         const colorSet = colorMap[selectedTheme];
         this.colorStart = colorSet[0];
         this.colorEnd = colorSet[1];
@@ -65,6 +67,9 @@ export class IdeaNode {
         // Drag & Lava Setup
         this.isDragging = false;
         this.children = [];
+
+        // Decay State
+        this.isDecayed = false;
     }
 
     absorb(childNode) {
@@ -98,14 +103,40 @@ export class IdeaNode {
     }
 
     update(ideasArray, width, height) {
+        const msPerDay = 86400000;
+        const age = new Date() - this.lastInteractedAt;
+        
+        // Stage thresholds
+        this.isWaning = age > msPerDay && age <= msPerDay * 3;
+        this.isDecayed = age > msPerDay * 3;
+
         // Pop-in animation: Grow radius smoothly toward target!
         this.radius += (this.targetRadius - this.radius) * 0.1;
 
         if (!this.isDragging) {
-            this.x += this.vx;
-            this.y += this.vy;
+            // Decay Multiplier
+            let multiplier = 1.0;
+            if (this.isDecayed) multiplier = 0.2;
+            else if (this.isWaning) multiplier = 0.5;
             
-            // Wall bounce
+            this.x += this.vx * multiplier;
+            this.y += this.vy * multiplier;
+
+            // Edge Drift (Only for fully decayed)
+            if (this.isDecayed) {
+                const steerForce = 0.02;
+                if (this.x < width / 2) this.vx -= steerForce; else this.vx += steerForce;
+                if (this.y < height / 2) this.vy -= steerForce; else this.vy += steerForce;
+                
+                const maxDecaySpeed = 0.5;
+                const speed = Math.hypot(this.vx, this.vy);
+                if (speed > maxDecaySpeed) {
+                    this.vx = (this.vx / speed) * maxDecaySpeed;
+                    this.vy = (this.vy / speed) * maxDecaySpeed;
+                }
+            }
+            
+            // Wall bounce (standard)
             if (this.x + this.radius > width || this.x - this.radius < 0) this.vx *= -1;
             if (this.y + this.radius > height || this.y - this.radius < 0) this.vy *= -1;
 
@@ -117,23 +148,42 @@ export class IdeaNode {
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     const minDistance = this.radius + other.radius;
 
-                    if (distance < minDistance) {
-                        // Push apart slightly
-                        const angle = Math.atan2(dy, dx);
-                        const overlap = minDistance - distance;
-                        this.x -= overlap * Math.cos(angle) * 0.5;
-                        this.y -= overlap * Math.sin(angle) * 0.5;
-                        other.x += overlap * Math.cos(angle) * 0.5;
-                        other.y += overlap * Math.sin(angle) * 0.5;
-                        
-                        // Simple velocity swap for bouncing
-                        const tempVx = this.vx;
-                        const tempVy = this.vy;
-                        this.vx = other.vx;
-                        this.vy = other.vy;
-                        other.vx = tempVx;
-                        other.vy = tempVy;
-                    }
+                        if (distance < minDistance) {
+                            const angle = Math.atan2(dy, dx);
+                            const overlap = minDistance - distance;
+                            
+                            // 1. Position correction (Push apart)
+                            // We push ghosts much further than active nodes
+                            const m1 = this.isDecayed ? 0.1 : 1.0;
+                            const m2 = other.isDecayed ? 0.1 : 1.0;
+                            const totalMass = m1 + m2;
+                            
+                            const ratio1 = m2 / totalMass;
+                            const ratio2 = m1 / totalMass;
+                            
+                            this.x -= overlap * Math.cos(angle) * ratio1;
+                            this.y -= overlap * Math.sin(angle) * ratio1;
+                            other.x += overlap * Math.cos(angle) * ratio2;
+                            other.y += overlap * Math.sin(angle) * ratio2;
+                            
+                            // 2. Velocity exchange (Mass-weighted)
+                            // This allows Heavy (Active) nodes to blast through Light (Ghost) nodes
+                            const vRelX = this.vx - other.vx;
+                            const vRelY = this.vy - other.vy;
+                            
+                            // Dot product of relative velocity and collision normal
+                            const nx = dx / distance;
+                            const ny = dy / distance;
+                            const dot = vRelX * nx + vRelY * ny;
+                            
+                            if (dot < 0) { // Only bounce if moving toward each other
+                                const impulse = (2 * dot) / totalMass;
+                                this.vx -= impulse * m2 * nx;
+                                this.vy -= impulse * m2 * ny;
+                                other.vx += impulse * m1 * nx;
+                                other.vy += impulse * m1 * ny;
+                            }
+                        }
                 }
             }
         }
@@ -145,8 +195,6 @@ export class IdeaNode {
                 child.offsetY += child.dy;
 
                 const distFromCenter = Math.sqrt(child.offsetX * child.offsetX + child.offsetY * child.offsetY);
-                
-                // If lava hits inner glass, bounce it
                 if (distFromCenter > this.radius - child.radius - 4) {
                     child.dx *= -1;
                     child.dy *= -1;
@@ -156,71 +204,85 @@ export class IdeaNode {
     }
 
     draw(ctx, currentZoom = 1) {
-        if (this.radius < 1) return; // Prevent crashing while invisible
+        if (this.radius < 1) return;
 
-        ctx.shadowColor = this.colorStart;
-        ctx.shadowBlur = 20;
+        let drawColorStart = this.colorStart;
+        let drawColorEnd = this.colorEnd;
+        let alpha = 1.0;
+
+        if (this.isDecayed) {
+            drawColorStart = '#94a3b8'; // Ghosted (Slate)
+            drawColorEnd = '#475569';
+            alpha = 0.3;
+        } else if (this.isWaning) {
+            // Waning: Blend original color with slate (50/50 mix)
+            // We use a CSS-like filter approach by lowering alpha and shadow
+            alpha = 0.65;
+        }
+
+        ctx.globalAlpha = alpha;
+        ctx.shadowColor = drawColorStart;
+        ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
 
         // Base gradient
         const gradient = ctx.createLinearGradient(
             this.x - this.radius, this.y - this.radius, 
             this.x + this.radius, this.y + this.radius
         );
-        gradient.addColorStop(0, this.colorStart);
-        gradient.addColorStop(1, this.colorEnd);
+        gradient.addColorStop(0, drawColorStart);
+        gradient.addColorStop(1, drawColorEnd);
 
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
 
-        // --- THE GOOGLE EARTH EFFECT ---
-        // As the camera zooms past 2.0x, the text and rim fade away like clouds!
         let surfaceAlpha = 1.0;
         if (currentZoom > 1.5) {
             surfaceAlpha = Math.max(0, 1.0 - ((currentZoom - 1.5) * 0.5));
         }
 
         if (this.children.length > 0) {
-            // LAVA LAMP MODE
-            ctx.globalAlpha = 0.2; // Background glass
+            ctx.globalAlpha = 0.2 * alpha;
             ctx.fillStyle = gradient;
             ctx.fill();
             
-            ctx.globalAlpha = 0.7 * surfaceAlpha; // Rim fades out when zoomed
-            ctx.strokeStyle = this.colorStart;
+            ctx.globalAlpha = 0.7 * surfaceAlpha * alpha; 
+            ctx.strokeStyle = drawColorStart;
             ctx.lineWidth = 3;
             ctx.stroke();
 
-            ctx.globalAlpha = 1.0; 
+            ctx.globalAlpha = 1.0 * alpha; 
             ctx.shadowBlur = 0;
 
-            // Draw children (Lava blobs) inside - These DO NOT fade out!
             this.children.forEach(child => {
+                let childColorStart = child.colorStart;
+                let childColorEnd = child.colorEnd;
+                if (this.isDecayed) {
+                    childColorStart = '#64748b';
+                    childColorEnd = '#334155';
+                }
+
                 const childGrad = ctx.createLinearGradient(
                     this.x + child.offsetX - child.radius, this.y + child.offsetY - child.radius, 
                     this.x + child.offsetX + child.radius, this.y + child.offsetY + child.radius
                 );
-                childGrad.addColorStop(0, child.colorStart);
-                childGrad.addColorStop(1, child.colorEnd);
+                childGrad.addColorStop(0, childColorStart);
+                childGrad.addColorStop(1, childColorEnd);
 
                 ctx.beginPath();
                 ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
                 ctx.fillStyle = childGrad;
                 ctx.fill();
             });
-
         } else {
-            // NORMAL SOLO MODE
             ctx.fillStyle = gradient;
             ctx.fill();
         }
 
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = alpha;
 
-        // Draw Text & Badges (Fades out when zooming)
         if (this.radius > 20 && surfaceAlpha > 0) {
-            ctx.globalAlpha = surfaceAlpha; // Apply the cloud fade
-            
+            ctx.globalAlpha = surfaceAlpha * alpha; 
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             
@@ -230,8 +292,8 @@ export class IdeaNode {
 
             ctx.font = '500 14px system-ui';
             ctx.lineWidth = 4; 
-            ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * surfaceAlpha})`; 
-            ctx.fillStyle = 'white'; 
+            ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * surfaceAlpha * alpha})`; 
+            ctx.fillStyle = this.isDecayed ? '#cbd5e1' : 'white'; 
 
             this.lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
@@ -239,7 +301,6 @@ export class IdeaNode {
                 ctx.fillText(line, this.x, lineY);
             });
 
-            // Draw Priority Badge
             if (this.priority > 0) {
                 const badgeRadius = 10;
                 const angle = -Math.PI / 4; 
@@ -251,7 +312,7 @@ export class IdeaNode {
                 ctx.fillStyle = '#1e293b'; 
                 ctx.fill();
                 
-                ctx.strokeStyle = this.colorStart;
+                ctx.strokeStyle = drawColorStart;
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
@@ -259,8 +320,7 @@ export class IdeaNode {
                 ctx.font = 'bold 11px system-ui';
                 ctx.fillText(this.priority.toString(), badgeX, badgeY);
             }
-            
-            ctx.globalAlpha = 1.0; // Reset alpha for the next bubble
         }
+        ctx.globalAlpha = 1.0;
     }
 }

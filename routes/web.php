@@ -11,3 +11,4 @@ Route::get('/', function () {
 Route::get('/api/ideas', [IdeaController::class, 'index']);
 Route::post('/api/ideas', [IdeaController::class, 'store']);
 Route::put('/api/ideas/{idea}', [IdeaController::class, 'update']);
+Route::put('/api/ideas/{idea}/rescue', [IdeaController::class, 'rescue']);

@@ -237,6 +237,21 @@ function handleStart(e) {
         
         if (dist < idea.radius) {
             
+            // THE RESCUE: If decayed, restore it!
+            if (idea.isDecayed) {
+                idea.lastInteractedAt = new Date();
+                idea.isDecayed = false;
+                
+                try {
+                    fetch(`/api/ideas/${idea.id}/rescue`, {
+                        method: 'PUT',
+                        headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+                    });
+                } catch (err) {
+                    console.error("Rescue failed", err);
+                }
+            }
+
             // FIRE THE ZOOM SEQUENCE
             if (isDoubleTap && viewState === 'ATMOSPHERE' && idea.children && idea.children.length > 0) {
                 enterZoomView(idea);
@@ -317,7 +332,16 @@ async function loadIdeas() {
         const data = await response.json();
         
         data.forEach(item => {
-            const newParent = new IdeaNode(item.id, item.text, width/2, height/2 + 50, item.color, item.priority, ctx);
+            const newParent = new IdeaNode(
+                item.id, 
+                item.text, 
+                width/2, 
+                height/2 + 50, 
+                item.color, 
+                item.priority, 
+                ctx, 
+                item.last_interacted_at
+            );
             if (item.children && item.children.length > 0) {
                 item.children.forEach(child => newParent.absorb(child));
             }
@@ -351,7 +375,16 @@ form.addEventListener('submit', async (e) => {
 
             if (!response.ok) throw new Error("Failed");
             const savedItem = await response.json();
-            ideas.push(new IdeaNode(savedItem.id, savedItem.text, width/2, height/2 + 50, savedItem.color, savedItem.priority, ctx));
+            ideas.push(new IdeaNode(
+                savedItem.id, 
+                savedItem.text, 
+                width/2, 
+                height/2 + 50, 
+                savedItem.color, 
+                savedItem.priority, 
+                ctx, 
+                savedItem.last_interacted_at
+            ));
             hideModal();
         } catch (error) {
             ideas.push(new IdeaNode(`temp-${Date.now()}`, text, width/2, height/2 + 50, color, priority, ctx));

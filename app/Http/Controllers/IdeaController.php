@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Idea;
+use Illuminate\Support\Carbon;
 
 class IdeaController extends Controller
 {
@@ -26,10 +27,10 @@ class IdeaController extends Controller
             'text' => $request->text,
             'color' => $request->color,
             'priority' => $request->priority ?? 0,
-            'parent_id' => $request->parent_id
+            'parent_id' => $request->parent_id,
+            'last_interacted_at' => now()
         ]);
 
-        // THIS WAS MISSING! We must send the new ID back to the canvas!
         return response()->json($idea);
     }
     
@@ -40,7 +41,17 @@ class IdeaController extends Controller
         ]);
 
         $idea->update([
-            'parent_id' => $request->parent_id
+            'parent_id' => $request->parent_id,
+            'last_interacted_at' => now()
+        ]);
+
+        return response()->json($idea);
+    }
+
+    public function rescue(Idea $idea)
+    {
+        $idea->update([
+            'last_interacted_at' => now()
         ]);
 
         return response()->json($idea);
