@@ -214,7 +214,7 @@ function getPointerPos(e) {
     return { x: e.clientX, y: e.clientY };
 }
 
-function handleStart(e) {
+async function handleStart(e) {
     // PREVENT TOUCHING BUBBLES WHILE THE CAMERA IS FLYING
     if (viewState === 'TRANSITION_IN' || viewState === 'TRANSITION_OUT') return;
 
@@ -289,6 +289,12 @@ async function handleEnd(e) {
                 if (dist < targetIdea.radius + draggedIdea.radius) {
                     
                     if (viewState === 'INSIDE') break; 
+                    
+                    // ANTI-INCEPTION: If both are parents, just break and let physics resolve overlap
+                    if (draggedIdea.children.length > 0 && targetIdea.children.length > 0) {
+                        break;
+                    }
+
                     if (draggedIdea.children && draggedIdea.children.length > 0) break; 
                     
                     targetIdea.absorb(draggedIdea);
@@ -332,11 +338,14 @@ async function loadIdeas() {
         const data = await response.json();
         
         data.forEach(item => {
+            const spawnX = (Math.random() * 0.6 + 0.2) * width;
+            const spawnY = (Math.random() * 0.6 + 0.2) * height;
+
             const newParent = new IdeaNode(
                 item.id, 
                 item.text, 
-                width/2, 
-                height/2 + 50, 
+                spawnX, 
+                spawnY, 
                 item.color, 
                 item.priority, 
                 ctx, 
@@ -375,11 +384,15 @@ form.addEventListener('submit', async (e) => {
 
             if (!response.ok) throw new Error("Failed");
             const savedItem = await response.json();
+            
+            const spawnX = (Math.random() * 0.6 + 0.2) * width;
+            const spawnY = (Math.random() * 0.6 + 0.2) * height;
+
             ideas.push(new IdeaNode(
                 savedItem.id, 
                 savedItem.text, 
-                width/2, 
-                height/2 + 50, 
+                spawnX, 
+                spawnY, 
                 savedItem.color, 
                 savedItem.priority, 
                 ctx, 
@@ -387,7 +400,9 @@ form.addEventListener('submit', async (e) => {
             ));
             hideModal();
         } catch (error) {
-            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, width/2, height/2 + 50, color, priority, ctx));
+            const spawnX = (Math.random() * 0.6 + 0.2) * width;
+            const spawnY = (Math.random() * 0.6 + 0.2) * height;
+            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx));
             hideModal();
         } finally {
             submitBtn.innerText = "Add to Atmosphere";

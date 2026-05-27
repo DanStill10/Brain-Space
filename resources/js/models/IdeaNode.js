@@ -51,8 +51,8 @@ export class IdeaNode {
         this.targetRadius = this.baseRadius;
 
         // Physics
-        this.vx = (Math.random() - 0.5) * 2;
-        this.vy = (Math.random() - 0.5) * 2;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = (Math.random() - 0.5) * 0.5;
         
         // Colors
         const selectedTheme = colorTheme && colorMap[colorTheme] ? colorTheme : colorKeys[Math.floor(Math.random() * colorKeys.length)];
@@ -68,19 +68,18 @@ export class IdeaNode {
         this.isDragging = false;
         this.children = [];
 
-        // Decay State
+        // Decay & Gravity State
         this.isDecayed = false;
+        this.mass = this.baseRadius; 
+        this.vortexAngle = Math.random() * Math.PI * 2; 
     }
 
     absorb(childNode) {
         // --- PERSISTENCE FIX ---
-        // If childNode is a live bubble, it has colorStart. 
-        // If it's loaded from the DB, it only has a 'color' string (e.g., 'blue').
         let cStart = childNode.colorStart;
         let cEnd = childNode.colorEnd;
 
         if (!cStart || !cEnd) {
-            // Rebuild the colors from the database theme string
             const theme = childNode.color && colorMap[childNode.color] ? childNode.color : 'blue';
             cStart = colorMap[theme][0];
             cEnd = colorMap[theme][1];
@@ -98,36 +97,46 @@ export class IdeaNode {
             dy: (Math.random() - 0.5) * 1.5
         });
 
-        // Increase target radius so it slowly grows!
         this.targetRadius = this.baseRadius + (this.children.length * 10);
+        this.mass = this.baseRadius + (this.children.length * 15);
     }
 
     update(ideasArray, width, height) {
         const msPerDay = 86400000;
         const age = new Date() - this.lastInteractedAt;
         
-        // Stage thresholds
         this.isWaning = age > msPerDay && age <= msPerDay * 3;
         this.isDecayed = age > msPerDay * 3;
 
-        // Pop-in animation: Grow radius smoothly toward target!
+        const activeMass = this.baseRadius + (this.children.length * 15);
+        this.mass = this.isDecayed ? 0.1 : activeMass;
+
         this.radius += (this.targetRadius - this.radius) * 0.1;
 
+        // Visual Rotation (Space-Age Accretion Disk Speed)
+        if (this.children.length > 0) {
+            this.vortexAngle += 0.008 + (this.children.length * 0.003);
+        }
+
         if (!this.isDragging) {
-            // Decay Multiplier
-            let multiplier = 1.0;
-            if (this.isDecayed) multiplier = 0.2;
-            else if (this.isWaning) multiplier = 0.5;
-            
+            let multiplier = this.isDecayed ? 0.2 : (this.isWaning ? 0.5 : 1.0);
             this.x += this.vx * multiplier;
             this.y += this.vy * multiplier;
 
-            // Edge Drift (Only for fully decayed)
+            let currentDamping = 0.995;
+
+            const minSpeed = this.isDecayed ? 0.05 : 0.15;
+            const currentSpeed = Math.hypot(this.vx, this.vy);
+            if (currentSpeed < minSpeed) {
+                const angle = Math.random() * Math.PI * 2;
+                this.vx += Math.cos(angle) * 0.05;
+                this.vy += Math.sin(angle) * 0.05;
+            }
+
             if (this.isDecayed) {
                 const steerForce = 0.02;
                 if (this.x < width / 2) this.vx -= steerForce; else this.vx += steerForce;
                 if (this.y < height / 2) this.vy -= steerForce; else this.vy += steerForce;
-                
                 const maxDecaySpeed = 0.5;
                 const speed = Math.hypot(this.vx, this.vy);
                 if (speed > maxDecaySpeed) {
@@ -136,64 +145,111 @@ export class IdeaNode {
                 }
             }
             
-            // Wall bounce (standard)
-            if (this.x + this.radius > width || this.x - this.radius < 0) this.vx *= -1;
-            if (this.y + this.radius > height || this.y - this.radius < 0) this.vy *= -1;
-
-            // Bubble-to-Bubble Collision Math
             for (let other of ideasArray) {
-                if (other !== this && !other.isDragging) {
-                    const dx = other.x - this.x;
-                    const dy = other.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    const minDistance = this.radius + other.radius;
+                if (other === this) continue;
 
-                        if (distance < minDistance) {
-                            const angle = Math.atan2(dy, dx);
-                            const overlap = minDistance - distance;
-                            
-                            // 1. Position correction (Push apart)
-                            // We push ghosts much further than active nodes
-                            const m1 = this.isDecayed ? 0.1 : 1.0;
-                            const m2 = other.isDecayed ? 0.1 : 1.0;
-                            const totalMass = m1 + m2;
-                            
-                            const ratio1 = m2 / totalMass;
-                            const ratio2 = m1 / totalMass;
-                            
-                            this.x -= overlap * Math.cos(angle) * ratio1;
-                            this.y -= overlap * Math.sin(angle) * ratio1;
-                            other.x += overlap * Math.cos(angle) * ratio2;
-                            other.y += overlap * Math.sin(angle) * ratio2;
-                            
-                            // 2. Velocity exchange (Mass-weighted)
-                            // This allows Heavy (Active) nodes to blast through Light (Ghost) nodes
-                            const vRelX = this.vx - other.vx;
-                            const vRelY = this.vy - other.vy;
-                            
-                            // Dot product of relative velocity and collision normal
-                            const nx = dx / distance;
-                            const ny = dy / distance;
-                            const dot = vRelX * nx + vRelY * ny;
-                            
-                            if (dot < 0) { // Only bounce if moving toward each other
-                                const impulse = (2 * dot) / totalMass;
-                                this.vx -= impulse * m2 * nx;
-                                this.vy -= impulse * m2 * ny;
-                                other.vx += impulse * m1 * nx;
-                                other.vy += impulse * m1 * ny;
-                            }
-                        }
+                let dx = other.x - this.x;
+                let dy = other.y - this.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance === 0) { 
+                    dx = Math.random() - 0.5;
+                    dy = Math.random() - 0.5;
+                    distance = Math.sqrt(dx * dx + dy * dy);
                 }
+                const minDistance = this.radius + other.radius;
+
+                if (this.children.length > 0 && other.children.length > 0) {
+                    const repelZone = minDistance + 40; 
+                    if (distance < repelZone) {
+                        const proximity = (1 - distance / repelZone);
+                        const force = proximity * 4; 
+                        const angle = Math.atan2(dy, dx);
+                        this.vx -= Math.cos(angle) * force;
+                        this.vy -= Math.sin(angle) * force;
+                        if (other.isDragging) {
+                            this.vx -= Math.cos(angle) * force * 2.5;
+                            this.vy -= Math.sin(angle) * force * 2.5;
+                        }
+                        currentDamping = 1.0; 
+                    }
+                }
+
+                if (other.isDragging) continue;
+
+                if (!this.isDecayed && this.children.length > 0 && other.children.length === 0 && distance < 450 && distance > minDistance) {
+                    const gravitationalConstant = 2.5; 
+                    const forceStrength = (this.mass / (distance * distance)) * gravitationalConstant; 
+                    const ax = (dx / distance) * forceStrength;
+                    const ay = (dy / distance) * forceStrength;
+                    const tx = -ay * 1.2; 
+                    const ty = ax * 1.2;
+                    other.vx -= (ax * 0.3) + tx;
+                    other.vy -= (ay * 0.3) + ty;
+                }
+
+                if (distance < minDistance) {
+                    const angle = Math.atan2(dy, dx);
+                    const overlap = minDistance - distance;
+                    const isParentCollision = this.children.length > 0 && other.children.length > 0;
+                    const totalMass = this.mass + other.mass;
+                    const r1 = isParentCollision ? 0.5 : (other.mass / totalMass);
+                    const r2 = isParentCollision ? 0.5 : (this.mass / totalMass);
+                    const correctionStrength = isParentCollision ? 0.9 : 1.0;
+
+                    this.x -= overlap * Math.cos(angle) * r1 * correctionStrength;
+                    this.y -= overlap * Math.sin(angle) * r1 * correctionStrength;
+                    other.x += overlap * Math.cos(angle) * r2 * correctionStrength;
+                    other.y += overlap * Math.sin(angle) * r2 * correctionStrength;
+                    
+                    const vRelX = this.vx - other.vx;
+                    const vRelY = this.vy - other.vy;
+                    const nx = dx / distance;
+                    const ny = dy / distance;
+                    const dot = vRelX * nx + vRelY * ny;
+                    if (dot < 0) {
+                        const restitution = 0.7;
+                        const m1_eff = isParentCollision ? 200 : this.mass;
+                        const m2_eff = isParentCollision ? 200 : other.mass;
+                        const impulse = ((1 + restitution) * dot) / (m1_eff + m2_eff);
+                        this.vx -= impulse * m2_eff * nx;
+                        this.vy -= impulse * m2_eff * ny;
+                        other.vx += impulse * m1_eff * nx;
+                        other.vy += impulse * m1_eff * ny;
+                    }
+                    if (isParentCollision) currentDamping = 1.0;
+                }
+            }
+
+            this.vx *= currentDamping;
+            this.vy *= currentDamping;
+
+            const margin = this.radius + 40;
+            const pushBack = 0.05;
+            if (this.x < margin) this.vx += pushBack;
+            if (this.x > width - margin) this.vx -= pushBack;
+            if (this.y < margin) this.vy += pushBack;
+            if (this.y > height - margin) this.vy -= pushBack;
+
+            if (this.x < this.radius) {
+                this.x = this.radius;
+                this.vx = Math.abs(this.vx) * 0.5;
+            } else if (this.x > width - this.radius) {
+                this.x = width - this.radius;
+                this.vx = -Math.abs(this.vx) * 0.5;
+            }
+            if (this.y < this.radius) {
+                this.y = this.radius;
+                this.vy = Math.abs(this.vy) * 0.5;
+            } else if (this.y > height - this.radius) {
+                this.y = height - this.radius;
+                this.vy = -Math.abs(this.vy) * 0.5;
             }
         }
 
-        // Internal Lava Physics
         if (this.children.length > 0) {
             this.children.forEach(child => {
                 child.offsetX += child.dx;
                 child.offsetY += child.dy;
-
                 const distFromCenter = Math.sqrt(child.offsetX * child.offsetX + child.offsetY * child.offsetY);
                 if (distFromCenter > this.radius - child.radius - 4) {
                     child.dx *= -1;
@@ -206,17 +262,63 @@ export class IdeaNode {
     draw(ctx, currentZoom = 1) {
         if (this.radius < 1) return;
 
+        // --- DRAW SPACE-AGE VORTEX (Behind the node) ---
+        if (this.children.length > 0 && !this.isDecayed) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            // 1. GRAVITY WELL BLOOM (Visualizing the space dip)
+            const gravityRadius = 450;
+            const bloomAlpha = 0.02 + (this.children.length * 0.005);
+            const grad = ctx.createRadialGradient(0, 0, this.radius, 0, 0, gravityRadius);
+            grad.addColorStop(0, `${this.colorStart}${Math.floor(bloomAlpha * 255).toString(16).padStart(2, '0')}`);
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(0, 0, gravityRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. FLOWING ENERGY FILAMENTS
+            const numRings = Math.min(4, Math.ceil(this.children.length / 1.5));
+            for (let i = 1; i <= numRings; i++) {
+                const ringRadius = this.radius + (i * 35) + (Math.sin(Date.now() * 0.001) * 2);
+                const rotationSpeed = this.vortexAngle * (i % 2 === 0 ? -1 : 1.2) * (0.8 / i);
+                
+                ctx.save();
+                ctx.rotate(rotationSpeed);
+                
+                // Draw 3 distinct filaments per orbital ring
+                for (let f = 0; f < 3; f++) {
+                    ctx.rotate((Math.PI * 2) / 3);
+                    ctx.beginPath();
+                    // Each filament is a soft arc with varying lengths
+                    const arcLen = (Math.PI / 4) + (this.children.length * 0.1);
+                    ctx.arc(0, 0, ringRadius, 0, arcLen);
+                    
+                    ctx.strokeStyle = this.colorStart;
+                    ctx.lineWidth = 1 + (i * 0.5);
+                    ctx.lineCap = 'round';
+                    ctx.globalAlpha = (0.1 + (this.children.length * 0.02)) / i;
+                    
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.colorStart;
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+            
+            ctx.restore();
+        }
+
         let drawColorStart = this.colorStart;
         let drawColorEnd = this.colorEnd;
         let alpha = 1.0;
 
         if (this.isDecayed) {
-            drawColorStart = '#94a3b8'; // Ghosted (Slate)
+            drawColorStart = '#94a3b8'; 
             drawColorEnd = '#475569';
             alpha = 0.3;
         } else if (this.isWaning) {
-            // Waning: Blend original color with slate (50/50 mix)
-            // We use a CSS-like filter approach by lowering alpha and shadow
             alpha = 0.65;
         }
 
@@ -224,7 +326,6 @@ export class IdeaNode {
         ctx.shadowColor = drawColorStart;
         ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
 
-        // Base gradient
         const gradient = ctx.createLinearGradient(
             this.x - this.radius, this.y - this.radius, 
             this.x + this.radius, this.y + this.radius
@@ -244,12 +345,10 @@ export class IdeaNode {
             ctx.globalAlpha = 0.2 * alpha;
             ctx.fillStyle = gradient;
             ctx.fill();
-            
             ctx.globalAlpha = 0.7 * surfaceAlpha * alpha; 
             ctx.strokeStyle = drawColorStart;
             ctx.lineWidth = 3;
             ctx.stroke();
-
             ctx.globalAlpha = 1.0 * alpha; 
             ctx.shadowBlur = 0;
 
@@ -260,14 +359,12 @@ export class IdeaNode {
                     childColorStart = '#64748b';
                     childColorEnd = '#334155';
                 }
-
-                const childGrad = ctx.createLinearGradient(
-                    this.x + child.offsetX - child.radius, this.y + child.offsetY - child.radius, 
-                    this.x + child.offsetX + child.radius, this.y + child.offsetY + child.radius
+                const childGrad = ctx.createRadialGradient(
+                    this.x + child.offsetX, this.y + child.offsetY, 0,
+                    this.x + child.offsetX, this.y + child.offsetY, child.radius
                 );
                 childGrad.addColorStop(0, childColorStart);
                 childGrad.addColorStop(1, childColorEnd);
-
                 ctx.beginPath();
                 ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
                 ctx.fillStyle = childGrad;
@@ -285,37 +382,30 @@ export class IdeaNode {
             ctx.globalAlpha = surfaceAlpha * alpha; 
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
             const lineHeight = 18; 
             const totalHeight = this.lines.length * lineHeight;
             const startY = this.y - (totalHeight / 2) + (lineHeight / 2);
-
             ctx.font = '500 14px system-ui';
             ctx.lineWidth = 4; 
             ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * surfaceAlpha * alpha})`; 
             ctx.fillStyle = this.isDecayed ? '#cbd5e1' : 'white'; 
-
             this.lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 ctx.strokeText(line, this.x, lineY);
                 ctx.fillText(line, this.x, lineY);
             });
-
             if (this.priority > 0) {
                 const badgeRadius = 10;
                 const angle = -Math.PI / 4; 
                 const badgeX = this.x + Math.cos(angle) * this.radius;
                 const badgeY = this.y + Math.sin(angle) * this.radius;
-
                 ctx.beginPath();
                 ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
                 ctx.fillStyle = '#1e293b'; 
                 ctx.fill();
-                
                 ctx.strokeStyle = drawColorStart;
                 ctx.lineWidth = 2;
                 ctx.stroke();
-
                 ctx.fillStyle = 'white';
                 ctx.font = 'bold 11px system-ui';
                 ctx.fillText(this.priority.toString(), badgeX, badgeY);
