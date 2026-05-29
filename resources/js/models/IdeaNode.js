@@ -262,14 +262,16 @@ export class IdeaNode {
     draw(ctx, currentZoom = 1) {
         if (this.radius < 1) return;
 
-        // --- DRAW SPACE-AGE VORTEX (Behind the node) ---
-        if (this.children.length > 0 && !this.isDecayed) {
+        const isZooming = currentZoom > 1.001;
+
+        // --- DRAW SPACE-AGE VORTEX ---
+        // Optimization: Disable vortex during zoom to save GPU cycles
+        if (this.children.length > 0 && !this.isDecayed && currentZoom < 1.2) {
             ctx.save();
             ctx.translate(this.x, this.y);
             
-            // 1. GRAVITY WELL BLOOM (Visualizing the space dip)
             const gravityRadius = 450;
-            const bloomAlpha = 0.02 + (this.children.length * 0.005);
+            const bloomAlpha = (0.02 + (this.children.length * 0.005)) * (isZooming ? 0.3 : 1);
             const grad = ctx.createRadialGradient(0, 0, this.radius, 0, 0, gravityRadius);
             grad.addColorStop(0, `${this.colorStart}${Math.floor(bloomAlpha * 255).toString(16).padStart(2, '0')}`);
             grad.addColorStop(1, 'transparent');
@@ -278,7 +280,6 @@ export class IdeaNode {
             ctx.arc(0, 0, gravityRadius, 0, Math.PI * 2);
             ctx.fill();
 
-            // 2. FLOWING ENERGY FILAMENTS
             const numRings = Math.min(4, Math.ceil(this.children.length / 1.5));
             for (let i = 1; i <= numRings; i++) {
                 const ringRadius = this.radius + (i * 35) + (Math.sin(Date.now() * 0.001) * 2);
@@ -286,27 +287,23 @@ export class IdeaNode {
                 
                 ctx.save();
                 ctx.rotate(rotationSpeed);
-                
-                // Draw 3 distinct filaments per orbital ring
                 for (let f = 0; f < 3; f++) {
                     ctx.rotate((Math.PI * 2) / 3);
                     ctx.beginPath();
-                    // Each filament is a soft arc with varying lengths
                     const arcLen = (Math.PI / 4) + (this.children.length * 0.1);
                     ctx.arc(0, 0, ringRadius, 0, arcLen);
-                    
                     ctx.strokeStyle = this.colorStart;
                     ctx.lineWidth = 1 + (i * 0.5);
                     ctx.lineCap = 'round';
                     ctx.globalAlpha = (0.1 + (this.children.length * 0.02)) / i;
-                    
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = this.colorStart;
+                    if (!isZooming) { // Only glow when static
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = this.colorStart;
+                    }
                     ctx.stroke();
                 }
                 ctx.restore();
             }
-            
             ctx.restore();
         }
 
@@ -323,8 +320,14 @@ export class IdeaNode {
         }
 
         ctx.globalAlpha = alpha;
-        ctx.shadowColor = drawColorStart;
-        ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
+        
+        // PERFORMANCE BOOST: Disable shadowBlur during zoom
+        if (!isZooming) {
+            ctx.shadowColor = drawColorStart;
+            ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
+        } else {
+            ctx.shadowBlur = 0;
+        }
 
         const gradient = ctx.createLinearGradient(
             this.x - this.radius, this.y - this.radius, 
@@ -359,15 +362,22 @@ export class IdeaNode {
                     childColorStart = '#64748b';
                     childColorEnd = '#334155';
                 }
-                const childGrad = ctx.createRadialGradient(
-                    this.x + child.offsetX, this.y + child.offsetY, 0,
-                    this.x + child.offsetX, this.y + child.offsetY, child.radius
-                );
-                childGrad.addColorStop(0, childColorStart);
-                childGrad.addColorStop(1, childColorEnd);
+
                 ctx.beginPath();
                 ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
-                ctx.fillStyle = childGrad;
+                
+                // PERFORMANCE BOOST: Solid colors instead of radial gradients during zoom
+                if (isZooming) {
+                    ctx.fillStyle = childColorStart;
+                } else {
+                    const childGrad = ctx.createRadialGradient(
+                        this.x + child.offsetX, this.y + child.offsetY, 0,
+                        this.x + child.offsetX, this.y + child.offsetY, child.radius
+                    );
+                    childGrad.addColorStop(0, childColorStart);
+                    childGrad.addColorStop(1, childColorEnd);
+                    ctx.fillStyle = childGrad;
+                }
                 ctx.fill();
             });
         } else {
