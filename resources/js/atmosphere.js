@@ -237,10 +237,11 @@ async function handleStart(e) {
         
         if (dist < idea.radius) {
             
-            // THE RESCUE: If decayed, restore it!
-            if (idea.isDecayed) {
+            // THE RESCUE: If decayed or waning, restore it!
+            if (idea.isDecayed || idea.isWaning) {
                 idea.lastInteractedAt = new Date();
                 idea.isDecayed = false;
+                idea.isWaning = false;
                 
                 try {
                     fetch(`/api/ideas/${idea.id}/rescue`, {
