@@ -13,3 +13,4 @@ Route::post('/api/ideas', [IdeaController::class, 'store']);
 Route::put('/api/ideas/{idea}', [IdeaController::class, 'update']);
 Route::put('/api/ideas/{idea}/rescue', [IdeaController::class, 'rescue']);
 Route::put('/api/ideas/{idea}/complete', [IdeaController::class, 'complete']);
+Route::delete('/api/ideas/{idea}', [IdeaController::class, 'destroy']);

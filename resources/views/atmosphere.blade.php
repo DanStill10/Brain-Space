@@ -17,11 +17,11 @@
     <div id="ui-layer">
         
         <!-- The Black Hole (Trash/Completion) -->
-        <div id="black-hole" class="pointer-events-auto absolute top-8 right-8 w-24 h-24 flex items-center justify-center transition-all duration-500">
+        <div id="black-hole" class="pointer-events-none absolute top-8 right-8 w-24 h-24 flex items-center justify-center transition-all duration-500">
             <div class="bh-core w-12 h-12 bg-black rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10"></div>
             <div class="bh-ring absolute w-full h-full border-2 border-dashed border-slate-700 rounded-full animate-[spin_10s_linear_infinite]"></div>
             <div class="bh-event-horizon absolute w-20 h-20 bg-white/5 rounded-full blur-xl"></div>
-            <span class="absolute -bottom-6 text-[10px] font-bold tracking-widest text-slate-500 uppercase opacity-0 transition-opacity bh-label">Complete</span>
+            <span class="absolute z-20 text-[11px] font-black tracking-[0.2em] text-black uppercase opacity-0 transition-opacity bh-label" style="text-shadow: 0 0 10px #fff, 0 0 15px #fff, 0 0 20px #fff, 0 0 25px #fff;">Void</span>
         </div>
 
         <!-- The Escape Hatch (Moved OUTSIDE the modal!) -->

@@ -46,17 +46,21 @@ canvas {
     pointer-events: none;
 }
 #black-hole.active {
-    transform: scale(1.1);
+    transform: scale(1.12);
 }
 #black-hole.active .bh-core {
-    box-shadow: 0 0 50px rgba(255,255,255,0.4);
+    box-shadow: 0 0 40px rgba(255,255,255,0.4);
 }
 #black-hole.active .bh-label {
     opacity: 1;
+    /* High contrast text shadow is handled inline in blade, but we can reinforce here */
 }
 #black-hole.active .bh-ring {
-    border-color: rgba(255,255,255,0.3);
-    animation-duration: 2s;
+    border-color: rgba(255,255,255,0.5);
+    animation-duration: 1.8s;
+}
+#black-hole.active .bh-event-horizon {
+    background: rgba(255,255,255,0.1);
 }
 
 #add-btn {

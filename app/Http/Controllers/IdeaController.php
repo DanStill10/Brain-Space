@@ -77,4 +77,13 @@ class IdeaController extends Controller
 
         return response()->json($idea);
     }
+
+    public function destroy(Idea $idea)
+    {
+        // Recursively delete children if needed, or just delete the idea.
+        // For now, let's just delete the idea.
+        $idea->delete();
+
+        return response()->json(['success' => true]);
+    }
 }

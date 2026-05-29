@@ -201,7 +201,8 @@ cancelBtn.addEventListener('click', hideModal);
 addBtn.addEventListener('click', showModal);
 
 function getPointerPos(e) {
-    if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    if (touch) return { x: touch.clientX, y: touch.clientY };
     return { x: e.clientX, y: e.clientY };
 }
 
@@ -261,7 +262,7 @@ function handleMove(e) {
         draggedIdea.x = pos.x;
         draggedIdea.y = pos.y;
 
-        // Black Hole Highlight
+        // Void Highlight
         const bhRect = blackHole.getBoundingClientRect();
         const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
         if (distToBH < 100 && viewState === 'ATMOSPHERE') {
@@ -277,7 +278,7 @@ async function handleEnd(e) {
         draggedIdea.isDragging = false;
         const pos = getPointerPos(e);
 
-        // 1. BLACK HOLE COMPLETION
+        // 1. VOID DELETION
         if (viewState === 'ATMOSPHERE') {
             const bhRect = blackHole.getBoundingClientRect();
             const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
@@ -288,12 +289,12 @@ async function handleEnd(e) {
                 blackHole.classList.remove('active');
                 
                 try {
-                    await fetch(`/api/ideas/${ideaId}/complete`, {
-                        method: 'PUT',
+                    await fetch(`/api/ideas/${ideaId}`, {
+                        method: 'DELETE',
                         headers: { 'X-CSRF-TOKEN': getCsrfToken() }
                     });
                     // TODO: Particle explosion
-                } catch (err) { console.error("Failed to complete idea", err); }
+                } catch (err) { console.error("Failed to delete idea", err); }
                 
                 draggedIdea = null;
                 return;
