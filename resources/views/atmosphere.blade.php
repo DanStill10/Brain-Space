@@ -16,6 +16,14 @@
 
     <div id="ui-layer">
         
+        <!-- The Black Hole (Trash/Completion) -->
+        <div id="black-hole" class="pointer-events-auto absolute top-8 right-8 w-24 h-24 flex items-center justify-center transition-all duration-500">
+            <div class="bh-core w-12 h-12 bg-black rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10"></div>
+            <div class="bh-ring absolute w-full h-full border-2 border-dashed border-slate-700 rounded-full animate-[spin_10s_linear_infinite]"></div>
+            <div class="bh-event-horizon absolute w-20 h-20 bg-white/5 rounded-full blur-xl"></div>
+            <span class="absolute -bottom-6 text-[10px] font-bold tracking-widest text-slate-500 uppercase opacity-0 transition-opacity bh-label">Complete</span>
+        </div>
+
         <!-- The Escape Hatch (Moved OUTSIDE the modal!) -->
         <button type="button" id="back-btn" class="hidden pointer-events-auto absolute top-4 left-4 bg-slate-800 border-2 border-slate-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg z-[100] transition-all hover:bg-slate-700">
             ← Back to Atmosphere

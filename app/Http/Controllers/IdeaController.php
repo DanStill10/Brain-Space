@@ -10,8 +10,29 @@ class IdeaController extends Controller
 {
     public function index()
     {
-        $ideas = Idea::whereNull('parent_id')->with('children')->get();
-        return response()->json($ideas);
+        $ideas = Idea::whereNull('parent_id')
+                    ->where('is_completed', false)
+                    ->with(['children' => function($query) {
+                        $query->where('is_completed', false);
+                    }])
+                    ->get();
+
+        $completed = Idea::where('is_completed', true)->get(['id', 'text', 'color', 'completed_at']);
+
+        return response()->json([
+            'active' => $ideas,
+            'completed' => $completed
+        ]);
+    }
+
+    public function complete(Idea $idea)
+    {
+        $idea->update([
+            'is_completed' => true,
+            'completed_at' => now()
+        ]);
+
+        return response()->json($idea);
     }
 
     public function store(Request $request)

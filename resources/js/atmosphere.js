@@ -12,9 +12,11 @@ const priorityInput = document.getElementById('goal-priority');
 const addBtn = document.getElementById('add-btn');
 const cancelBtn = document.getElementById('cancel-btn');
 const backBtn = document.getElementById('back-btn'); 
+const blackHole = document.getElementById('black-hole');
 
 let width, height;
 let ideas = [];
+let completedIdeas = []; // For constellations
 let ambientParticles = [];
 let draggedIdea = null; 
 
@@ -57,6 +59,7 @@ function enterZoomView(parentIdea) {
     targetZoom = (screenDiag / 2) / parentIdea.radius + 2; 
 
     addBtn.classList.add('hidden'); 
+    blackHole.classList.add('opacity-0');
 }
 
 function exitZoomView(e) {
@@ -66,8 +69,6 @@ function exitZoomView(e) {
     }
     
     // THE REVERSE HAND-OFF: 
-    // Snap the tiny lava blobs to exactly where the massive bubbles currently are
-    // so the reverse camera zoom is 100% seamless!
     zoomedParent.children.forEach(child => {
         const activeBubble = zoomedIdeas.find(zi => zi.id === child.id);
         if (activeBubble) {
@@ -90,13 +91,11 @@ function animate() {
 
     // 1. UPDATE CAMERA PROGRESS
     if (viewState === 'TRANSITION_IN') {
-        transitionProgress += 0.015; // Animation Speed (approx 1s at 60fps)
+        transitionProgress += 0.015; 
         if (transitionProgress >= 1) {
             transitionProgress = 1;
             viewState = 'INSIDE';
             
-            // THE SEAMLESS HAND-OFF: 
-            // Spawn the new bubbles at the exact massive screen coordinates the lava was occupying
             zoomedIdeas = zoomedParent.children.map(child => {
                 const spawnX = (width/2) + (child.offsetX * targetZoom);
                 const spawnY = (height/2) + (child.offsetY * targetZoom);
@@ -104,8 +103,6 @@ function animate() {
                 const newChild = new IdeaNode(child.id, child.text, spawnX, spawnY, null, 0, ctx); 
                 newChild.colorStart = child.colorStart;
                 newChild.colorEnd = child.colorEnd;
-                
-                // Spawn them HUGE so they gracefully shrink down to their target radius
                 newChild.radius = child.radius * targetZoom;
                 
                 return newChild;
@@ -119,12 +116,12 @@ function animate() {
             viewState = 'ATMOSPHERE';
             zoomedParent = null;
             addBtn.classList.remove('hidden');
+            blackHole.classList.remove('opacity-0');
         }
     }
 
     // 2. RENDER THE ENVIRONMENT
     if (viewState === 'INSIDE') {
-        // FULLY ZOOMED IN
         const grad = ctx.createLinearGradient(0, 0, 0, height);
         grad.addColorStop(0, zoomedParent.colorStart || '#3b82f6');
         grad.addColorStop(1, '#111827');
@@ -137,14 +134,11 @@ function animate() {
         });
 
     } else {
-        // ATMOSPHERE OR TRANSITION
-        // Easing Function for buttery smooth camera glide (Ease In-Out Cubic)
         const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         const e = ease(transitionProgress);
         
         const currentZoom = 1 + (targetZoom - 1) * e;
         
-        // Target tracking: Lock dead-center onto the parent bubble
         let focusX = width / 2;
         let focusY = height / 2;
         if (zoomedParent) {
@@ -153,30 +147,25 @@ function animate() {
         }
 
         ctx.save();
-        
-        // Apply the Cinematic Camera Matrix
         ctx.translate(width / 2, height / 2);
         ctx.scale(currentZoom, currentZoom);
         ctx.translate(-focusX, -focusY);
 
-        // ONLY update main physics if time isn't frozen
         if (viewState === 'ATMOSPHERE') {
             ambientParticles.forEach(p => p.update(width, height));
             ideas.forEach(idea => idea.update(ideas, width, height));
         }
 
-        // Draw everything (passing currentZoom so IdeaNode can fade the text)
         ambientParticles.forEach(p => p.draw(ctx));
         ideas.forEach(idea => idea.draw(ctx, currentZoom)); 
 
         ctx.restore();
 
-        // Smoothly fade the dark background in/out behind the zooming bubbles
         if (transitionProgress > 0 && zoomedParent) {
             const grad = ctx.createLinearGradient(0, 0, 0, height);
             grad.addColorStop(0, zoomedParent.colorStart || '#3b82f6');
             grad.addColorStop(1, '#111827');
-            ctx.globalAlpha = e; // Sync alpha to the easing curve
+            ctx.globalAlpha = e; 
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, width, height);
             ctx.globalAlpha = 1.0;
@@ -194,12 +183,14 @@ function showModal() {
     modal.classList.remove('hidden-animate');
     if(ideas.length > 0) cancelBtn.classList.remove('hidden');
     addBtn.classList.add('hidden');
+    blackHole.classList.add('opacity-0');
     setTimeout(() => input.focus(), 100);
 }
 
 function hideModal() {
     modal.classList.add('hidden-animate');
     addBtn.classList.remove('hidden');
+    blackHole.classList.remove('opacity-0');
     input.value = '';
     colorInput.value = '';
     priorityInput.value = '0';
@@ -215,7 +206,6 @@ function getPointerPos(e) {
 }
 
 async function handleStart(e) {
-    // PREVENT TOUCHING BUBBLES WHILE THE CAMERA IS FLYING
     if (viewState === 'TRANSITION_IN' || viewState === 'TRANSITION_OUT') return;
 
     if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) {
@@ -237,22 +227,18 @@ async function handleStart(e) {
         
         if (dist < idea.radius) {
             
-            // THE RESCUE: If decayed, restore it!
-            if (idea.isDecayed) {
+            if (idea.isDecayed || idea.isWaning) {
                 idea.lastInteractedAt = new Date();
                 idea.isDecayed = false;
-                
+                idea.isWaning = false;
                 try {
                     fetch(`/api/ideas/${idea.id}/rescue`, {
                         method: 'PUT',
                         headers: { 'X-CSRF-TOKEN': getCsrfToken() }
                     });
-                } catch (err) {
-                    console.error("Rescue failed", err);
-                }
+                } catch (err) { console.error("Rescue failed", err); }
             }
 
-            // FIRE THE ZOOM SEQUENCE
             if (isDoubleTap && viewState === 'ATMOSPHERE' && idea.children && idea.children.length > 0) {
                 enterZoomView(idea);
                 return; 
@@ -272,12 +258,46 @@ function handleMove(e) {
         const pos = getPointerPos(e);
         draggedIdea.x = pos.x;
         draggedIdea.y = pos.y;
+
+        // Black Hole Highlight
+        const bhRect = blackHole.getBoundingClientRect();
+        const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
+        if (distToBH < 100 && viewState === 'ATMOSPHERE') {
+            blackHole.classList.add('active');
+        } else {
+            blackHole.classList.remove('active');
+        }
     }
 }
 
 async function handleEnd(e) {
     if (draggedIdea) {
         draggedIdea.isDragging = false;
+        const pos = getPointerPos(e);
+
+        // 1. BLACK HOLE COMPLETION
+        if (viewState === 'ATMOSPHERE') {
+            const bhRect = blackHole.getBoundingClientRect();
+            const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
+            
+            if (distToBH < 80) {
+                const ideaId = draggedIdea.id;
+                ideas = ideas.filter(node => node.id !== ideaId);
+                blackHole.classList.remove('active');
+                
+                try {
+                    await fetch(`/api/ideas/${ideaId}/complete`, {
+                        method: 'PUT',
+                        headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+                    });
+                    // TODO: Particle explosion
+                } catch (err) { console.error("Failed to complete idea", err); }
+                
+                draggedIdea = null;
+                return;
+            }
+        }
+
         const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
 
         for (let i = 0; i < activeArray.length; i++) {
@@ -287,14 +307,8 @@ async function handleEnd(e) {
                 const dist = Math.hypot(draggedIdea.x - targetIdea.x, draggedIdea.y - targetIdea.y);
                 
                 if (dist < targetIdea.radius + draggedIdea.radius) {
-                    
                     if (viewState === 'INSIDE') break; 
-                    
-                    // ANTI-INCEPTION: If both are parents, just break and let physics resolve overlap
-                    if (draggedIdea.children.length > 0 && targetIdea.children.length > 0) {
-                        break;
-                    }
-
+                    if (draggedIdea.children.length > 0 && targetIdea.children.length > 0) break;
                     if (draggedIdea.children && draggedIdea.children.length > 0) break; 
                     
                     targetIdea.absorb(draggedIdea);
@@ -310,15 +324,14 @@ async function handleEnd(e) {
                             },
                             body: JSON.stringify({ parent_id: targetIdea.id })
                         });
-                    } catch (err) {
-                        console.error("Failed to merge", err);
-                    }
+                    } catch (err) { console.error("Failed to merge", err); }
                     
                     break; 
                 }
             }
         }
         draggedIdea = null;
+        blackHole.classList.remove('active');
     }
 }
 
@@ -337,7 +350,9 @@ async function loadIdeas() {
         if (!response.ok) throw new Error("Backend not ready yet");
         const data = await response.json();
         
-        data.forEach(item => {
+        completedIdeas = data.completed || [];
+
+        data.active.forEach(item => {
             const spawnX = (Math.random() * 0.6 + 0.2) * width;
             const spawnY = (Math.random() * 0.6 + 0.2) * height;
 
