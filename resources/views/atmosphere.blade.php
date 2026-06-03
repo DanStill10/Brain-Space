@@ -16,6 +16,32 @@
 
     <div id="ui-layer">
         
+        <!-- Mission Report Panel (Left Edge) -->
+        <div id="mission-report" class="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 w-80 p-8 flex flex-col space-y-4 opacity-0 transition-all duration-500 translate-x-[-20px]">
+            <div class="border-l-2 border-blue-500/50 pl-6 space-y-1">
+                <div class="text-[10px] font-bold tracking-[0.3em] text-blue-400 uppercase opacity-50">Object Identification</div>
+                <h1 id="report-title" class="text-3xl font-light tracking-tight text-white leading-tight">--</h1>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
+                <div>
+                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Priority Index</div>
+                    <div id="report-priority" class="text-xl font-mono text-white">0.0</div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Status</div>
+                    <div id="report-status" class="text-xl font-mono text-emerald-400">Stable</div>
+                </div>
+            </div>
+
+            <div class="pt-2">
+                <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">Composition</div>
+                <div id="report-children" class="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-line">
+                    No sub-modules detected.
+                </div>
+            </div>
+        </div>
+
         <!-- The Black Hole (Trash/Completion) -->
         <div id="black-hole" class="pointer-events-none absolute top-8 right-8 w-24 h-24 flex items-center justify-center transition-all duration-500">
             <div class="bh-core w-12 h-12 bg-black rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)] z-10"></div>

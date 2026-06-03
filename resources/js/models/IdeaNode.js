@@ -259,10 +259,48 @@ export class IdeaNode {
         }
     }
 
-    draw(ctx, currentZoom = 1) {
+    draw(ctx, currentZoom = 1, isFocused = false) {
         if (this.radius < 1) return;
 
         const isZooming = currentZoom > 1.001;
+
+        // --- DRAW RETICLE (LOCK-ON) ---
+        if (isFocused) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            const reticleSize = this.radius + 15;
+            const bracketLen = 12;
+            const glowColor = this.colorStart;
+
+            ctx.strokeStyle = glowColor;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = glowColor;
+
+            // Pulsing animation for reticle
+            const pulse = Math.sin(Date.now() * 0.01) * 3;
+            const s = reticleSize + pulse;
+
+            // Draw 4 corners [ + ]
+            for (let i = 0; i < 4; i++) {
+                ctx.rotate(Math.PI / 2);
+                ctx.beginPath();
+                ctx.moveTo(s - bracketLen, s);
+                ctx.lineTo(s, s);
+                ctx.lineTo(s, s - bracketLen);
+                ctx.stroke();
+            }
+
+            // Crosshair center (very faint)
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.moveTo(-5, 0); ctx.lineTo(5, 0);
+            ctx.moveTo(0, -5); ctx.lineTo(0, 5);
+            ctx.stroke();
+
+            ctx.restore();
+        }
 
         // --- DRAW SPACE-AGE VORTEX ---
         // Optimization: Disable vortex during zoom to save GPU cycles
@@ -389,21 +427,31 @@ export class IdeaNode {
         ctx.globalAlpha = alpha;
 
         if (this.radius > 20 && surfaceAlpha > 0) {
-            ctx.globalAlpha = surfaceAlpha * alpha; 
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const lineHeight = 18; 
-            const totalHeight = this.lines.length * lineHeight;
-            const startY = this.y - (totalHeight / 2) + (lineHeight / 2);
-            ctx.font = '500 14px system-ui';
-            ctx.lineWidth = 4; 
-            ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 * surfaceAlpha * alpha})`; 
-            ctx.fillStyle = this.isDecayed ? '#cbd5e1' : 'white'; 
-            this.lines.forEach((line, index) => {
-                const lineY = startY + (index * lineHeight);
-                ctx.strokeText(line, this.x, lineY);
-                ctx.fillText(line, this.x, lineY);
-            });
+            if (isFocused) {
+                // Draw Leader Line to the left panel
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.radius - 10, this.y);
+                
+                // Mission Report is roughly at x=320 (80w + 8p)
+                const targetX = 320; 
+                const targetY = window.innerHeight / 2;
+
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = this.colorStart;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.4;
+
+                // Simple elbow joint for the leader line
+                const midX = (this.x + targetX) / 2;
+                ctx.lineTo(midX, this.y);
+                ctx.lineTo(midX, targetY);
+                ctx.lineTo(targetX, targetY);
+                
+                ctx.stroke();
+                ctx.restore();
+            }
+
             if (this.priority > 0) {
                 const badgeRadius = 10;
                 const angle = -Math.PI / 4; 

@@ -14,11 +14,19 @@ const cancelBtn = document.getElementById('cancel-btn');
 const backBtn = document.getElementById('back-btn'); 
 const blackHole = document.getElementById('black-hole');
 
+// Mission Report Elements
+const missionReport = document.getElementById('mission-report');
+const reportTitle = document.getElementById('report-title');
+const reportPriority = document.getElementById('report-priority');
+const reportStatus = document.getElementById('report-status');
+const reportChildren = document.getElementById('report-children');
+
 let width, height;
 let ideas = [];
 let completedIdeas = []; // For constellations
 let ambientParticles = [];
 let draggedIdea = null; 
+let focusedIdea = null;
 
 // --- STATE MACHINE & CINEMATIC CAMERA ---
 let viewState = 'ATMOSPHERE'; // ATMOSPHERE, TRANSITION_IN, INSIDE, TRANSITION_OUT
@@ -30,6 +38,37 @@ let transitionProgress = 0; // 0 to 1
 let targetZoom = 1;
 
 const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+function updateMissionReport(idea) {
+    if (!idea) {
+        missionReport.classList.add('opacity-0', 'translate-x-[-20px]');
+        missionReport.classList.remove('opacity-100', 'translate-x-0');
+        return;
+    }
+
+    reportTitle.innerText = idea.text;
+    reportPriority.innerText = idea.priority.toFixed(1);
+    
+    if (idea.isDecayed) {
+        reportStatus.innerText = "DECAYED";
+        reportStatus.className = "text-xl font-mono text-rose-500 animate-pulse";
+    } else if (idea.isWaning) {
+        reportStatus.innerText = "WANING";
+        reportStatus.className = "text-xl font-mono text-amber-400";
+    } else {
+        reportStatus.innerText = "STABLE";
+        reportStatus.className = "text-xl font-mono text-emerald-400";
+    }
+
+    if (idea.children && idea.children.length > 0) {
+        reportChildren.innerText = idea.children.map(c => `> ${c.text}`).join('\n');
+    } else {
+        reportChildren.innerText = "No sub-modules detected.";
+    }
+
+    missionReport.classList.remove('opacity-0', 'translate-x-[-20px]');
+    missionReport.classList.add('opacity-100', 'translate-x-0');
+}
 
 function resize() {
     width = window.innerWidth;
@@ -53,6 +92,8 @@ initParticles();
 function enterZoomView(parentIdea) {
     zoomedParent = parentIdea;
     viewState = 'TRANSITION_IN';
+    focusedIdea = null;
+    updateMissionReport(null);
     
     // Calculate the exact zoom needed so the bubble engulfs the entire screen diagonal
     const screenDiag = Math.sqrt(width*width + height*height);
@@ -130,7 +171,7 @@ function animate() {
 
         zoomedIdeas.forEach(idea => { 
             idea.update(zoomedIdeas, width, height); 
-            idea.draw(ctx); 
+            idea.draw(ctx, 1, idea === focusedIdea); 
         });
 
     } else {
@@ -157,7 +198,7 @@ function animate() {
         }
 
         ambientParticles.forEach(p => p.draw(ctx));
-        ideas.forEach(idea => idea.draw(ctx, currentZoom)); 
+        ideas.forEach(idea => idea.draw(ctx, currentZoom, idea === focusedIdea)); 
 
         ctx.restore();
 
@@ -184,6 +225,8 @@ function showModal() {
     if(ideas.length > 0) cancelBtn.classList.remove('hidden');
     addBtn.classList.add('hidden');
     blackHole.classList.add('opacity-0');
+    focusedIdea = null;
+    updateMissionReport(null);
     setTimeout(() => input.focus(), 100);
 }
 
@@ -221,13 +264,17 @@ async function handleStart(e) {
     lastTapTime = currentTime;
 
     const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
+    let found = false;
 
     for (let i = activeArray.length - 1; i >= 0; i--) {
         const idea = activeArray[i];
         const dist = Math.hypot(idea.x - pos.x, idea.y - pos.y);
         
         if (dist < idea.radius) {
-            
+            found = true;
+            focusedIdea = idea;
+            updateMissionReport(idea);
+
             // THE RESCUE: If decayed or waning, restore it!
             if (idea.isDecayed || idea.isWaning) {
                 idea.lastInteractedAt = new Date();
@@ -253,6 +300,11 @@ async function handleStart(e) {
             break;
         }
     }
+
+    if (!found) {
+        focusedIdea = null;
+        updateMissionReport(null);
+    }
 }
 
 function handleMove(e) {
@@ -269,6 +321,26 @@ function handleMove(e) {
             blackHole.classList.add('active');
         } else {
             blackHole.classList.remove('active');
+        }
+    } else {
+        // Hover detection for focusedIdea (mouse only)
+        if (e.type === 'mousemove' && !modal.classList.contains('hidden-animate')) {
+            const pos = getPointerPos(e);
+            const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
+            let found = false;
+            for (let i = activeArray.length - 1; i >= 0; i--) {
+                const idea = activeArray[i];
+                if (Math.hypot(idea.x - pos.x, idea.y - pos.y) < idea.radius) {
+                    if (focusedIdea !== idea) {
+                        focusedIdea = idea;
+                        updateMissionReport(idea);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            // Optional: don't clear on hover-off to keep the report sticky? 
+            // Let's keep it sticky for now.
         }
     }
 }
