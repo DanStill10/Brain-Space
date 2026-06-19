@@ -6,6 +6,22 @@ use Illuminate\Http\Request;
 use App\Models\Idea;
 use Illuminate\Support\Carbon;
 
+/**
+ * Class IdeaController
+ * 
+ * Think of this Controller as the "Traffic Controller" for our Brain Space application. 
+ * In a Model-View-Controller (MVC) architecture, the Controller is the essential 
+ * intermediary between our data (the Models) and our user interface.
+ * 
+ * Why do we have this dedicated controller? Because it allows us to centralize the 
+ * business logic for managing "Ideas." When a request hits our application, the 
+ * routing system directs it here. Our job, then, is to orchestrate: validate input, 
+ * talk to the database through our Eloquent models, and return the correct 
+ * JSON response back to the client.
+ * 
+ * By keeping this logic separate from the routes and the models, we maintain a 
+ * clean, scalable codebase where each file has a single, clearly defined responsibility.
+ */
 class IdeaController extends Controller
 {
     public function index()

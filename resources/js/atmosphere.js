@@ -1,6 +1,22 @@
 import { Particle } from './models/Particle.js';
 import { IdeaNode } from './models/IdeaNode.js';
 
+/**
+ * Atmosphere Engine (The Application Core)
+ * 
+ * This file is the primary engine for the "Brain Space" visualization. 
+ * Why a canvas-based approach instead of standard DOM elements? Performance and flexibility. 
+ * When dealing with dozens or hundreds of moving, colliding, and glowing objects, the HTML DOM 
+ * becomes a bottleneck. The HTML5 `<canvas>` provides a low-level drawing surface where we 
+ * can render at 60fps using a custom game-like loop.
+ * 
+ * This file manages:
+ * 1. The Global State (which ideas exist, where the camera is).
+ * 2. The Animation Loop (calculating physics updates and drawing frames).
+ * 3. The Input Handlers (translating mouse/touch events into world-space interactions).
+ * 4. The API synchronization (fetching and saving state to the Laravel backend).
+ */
+
 // --- Global State & DOM Elements ---
 const canvas = document.getElementById('atmosphere');
 const ctx = canvas.getContext('2d');
@@ -20,21 +36,36 @@ const reportTitle = document.getElementById('report-title');
 const reportPriority = document.getElementById('report-priority');
 const reportStatus = document.getElementById('report-status');
 const reportChildren = document.getElementById('report-children');
+const rescueSector = document.getElementById('rescue-sector');
+const stabilizeBtn = document.getElementById('stabilize-btn');
+const uplinkProgress = document.getElementById('uplink-progress');
+const uplinkPercent = document.getElementById('uplink-percent');
 
 let width, height;
 let ideas = [];
-let completedIdeas = []; // For constellations
 let ambientParticles = [];
 let draggedIdea = null; 
 let focusedIdea = null;
 
-// --- STATE MACHINE & CINEMATIC CAMERA ---
+// Camera & Starchart Offset
+let camX = 0;
+let camY = 0;
+let targetCamX = 0;
+let targetCamY = 0;
+let isPanning = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+// Uplink State
+let isUplinking = false;
+let uplinkValue = 0;
+let uplinkStartTime = 0;
+
+// --- STATE MACHINE ---
 let viewState = 'ATMOSPHERE'; // ATMOSPHERE, TRANSITION_IN, INSIDE, TRANSITION_OUT
 let zoomedParent = null; 
 let zoomedIdeas = [];    
-let lastTapTime = 0;     
-
-let transitionProgress = 0; // 0 to 1
+let transitionProgress = 0; 
 let targetZoom = 1;
 
 const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -52,12 +83,15 @@ function updateMissionReport(idea) {
     if (idea.isDecayed) {
         reportStatus.innerText = "DECAYED";
         reportStatus.className = "text-xl font-mono text-rose-500 animate-pulse";
+        rescueSector.classList.remove('hidden');
     } else if (idea.isWaning) {
         reportStatus.innerText = "WANING";
         reportStatus.className = "text-xl font-mono text-amber-400";
+        rescueSector.classList.remove('hidden');
     } else {
         reportStatus.innerText = "STABLE";
         reportStatus.className = "text-xl font-mono text-emerald-400";
+        rescueSector.classList.add('hidden');
     }
 
     if (idea.children && idea.children.length > 0) {
@@ -68,6 +102,11 @@ function updateMissionReport(idea) {
 
     missionReport.classList.remove('opacity-0', 'translate-x-[-20px]');
     missionReport.classList.add('opacity-100', 'translate-x-0');
+    
+    // Reset uplink UI
+    uplinkValue = 0;
+    uplinkProgress.style.width = '0%';
+    uplinkPercent.innerText = '0%';
 }
 
 function resize() {
@@ -79,133 +118,84 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+const WORLD_SIZE = 5000;
+
 function initParticles() {
     ambientParticles = [];
-    for(let i = 0; i < 150; i++) {
-        ambientParticles.push(new Particle(width, height));
+    for(let i = 0; i < 400; i++) {
+        ambientParticles.push(new Particle(WORLD_SIZE, WORLD_SIZE)); 
     }
 }
 initParticles();
-
-// --- MICRO-ATMOSPHERE LOGIC ---
-
-function enterZoomView(parentIdea) {
-    zoomedParent = parentIdea;
-    viewState = 'TRANSITION_IN';
-    focusedIdea = null;
-    updateMissionReport(null);
-    
-    // Calculate the exact zoom needed so the bubble engulfs the entire screen diagonal
-    const screenDiag = Math.sqrt(width*width + height*height);
-    targetZoom = (screenDiag / 2) / parentIdea.radius + 2; 
-
-    addBtn.classList.add('hidden'); 
-    blackHole.classList.add('opacity-0');
-}
-
-function exitZoomView(e) {
-    if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-    
-    // THE REVERSE HAND-OFF: 
-    zoomedParent.children.forEach(child => {
-        const activeBubble = zoomedIdeas.find(zi => zi.id === child.id);
-        if (activeBubble) {
-            child.offsetX = (activeBubble.x - (width/2)) / targetZoom;
-            child.offsetY = (activeBubble.y - (height/2)) / targetZoom;
-        }
-    });
-
-    viewState = 'TRANSITION_OUT';
-    backBtn.classList.add('hidden');
-    zoomedIdeas = []; // Clear the full-sized bubbles
-}
-
-backBtn.addEventListener('click', exitZoomView);
-backBtn.addEventListener('touchstart', exitZoomView, { passive: false });
 
 // --- ANIMATION ENGINE ---
 function animate() {
     ctx.clearRect(0, 0, width, height);
 
-    // 1. UPDATE CAMERA PROGRESS
-    if (viewState === 'TRANSITION_IN') {
-        transitionProgress += 0.015; 
-        if (transitionProgress >= 1) {
-            transitionProgress = 1;
-            viewState = 'INSIDE';
-            
-            zoomedIdeas = zoomedParent.children.map(child => {
-                const spawnX = (width/2) + (child.offsetX * targetZoom);
-                const spawnY = (height/2) + (child.offsetY * targetZoom);
-                
-                const newChild = new IdeaNode(child.id, child.text, spawnX, spawnY, null, 0, ctx); 
-                newChild.colorStart = child.colorStart;
-                newChild.colorEnd = child.colorEnd;
-                newChild.radius = child.radius * targetZoom;
-                
-                return newChild;
-            });
-            backBtn.classList.remove('hidden');
-        }
-    } else if (viewState === 'TRANSITION_OUT') {
-        transitionProgress -= 0.015;
-        if (transitionProgress <= 0) {
-            transitionProgress = 0;
-            viewState = 'ATMOSPHERE';
-            zoomedParent = null;
-            addBtn.classList.remove('hidden');
-            blackHole.classList.remove('opacity-0');
+    // 1. Camera Smoothing
+    camX += (targetCamX - camX) * 0.08;
+    camY += (targetCamY - camY) * 0.08;
+
+    // 2. Uplink Logic
+    if (isUplinking && focusedIdea && (focusedIdea.isDecayed || focusedIdea.isWaning)) {
+        const elapsed = Date.now() - uplinkStartTime;
+        uplinkValue = Math.min(100, (elapsed / 1500) * 100);
+        uplinkProgress.style.width = `${uplinkValue}%`;
+        uplinkPercent.innerText = `${Math.floor(uplinkValue)}%`;
+
+        if (uplinkValue >= 100) {
+            completeUplink();
         }
     }
 
-    // 2. RENDER THE ENVIRONMENT
+    // 3. Render
     if (viewState === 'INSIDE') {
         const grad = ctx.createLinearGradient(0, 0, 0, height);
         grad.addColorStop(0, zoomedParent.colorStart || '#3b82f6');
-        grad.addColorStop(1, '#111827');
+        grad.addColorStop(1, '#05070a');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, width, height);
 
         zoomedIdeas.forEach(idea => { 
-            idea.update(zoomedIdeas, width, height); 
+            idea.update(zoomedIdeas); 
             idea.draw(ctx, 1, idea === focusedIdea); 
         });
 
     } else {
         const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         const e = ease(transitionProgress);
-        
         const currentZoom = 1 + (targetZoom - 1) * e;
         
-        let focusX = width / 2;
-        let focusY = height / 2;
+        ctx.save();
+        
+        // 1. Center everything on the viewport
+        ctx.translate(width / 2, height / 2);
+        
+        // 2. Apply Camera Autopilot / Panning
+        ctx.translate(camX, camY);
+        
+        // 3. Apply Zoom
+        ctx.scale(currentZoom, currentZoom);
+
+        // 4. Handle transition focus if zooming into a parent
         if (zoomedParent) {
-            focusX = (width / 2) + (zoomedParent.x - (width / 2)) * e;
-            focusY = (height / 2) + (zoomedParent.y - (height / 2)) * e;
+            ctx.translate(-zoomedParent.x * e, -zoomedParent.y * e);
         }
 
-        ctx.save();
-        ctx.translate(width / 2, height / 2);
-        ctx.scale(currentZoom, currentZoom);
-        ctx.translate(-focusX, -focusY);
-
         if (viewState === 'ATMOSPHERE') {
-            ambientParticles.forEach(p => p.update(width, height));
-            ideas.forEach(idea => idea.update(ideas, width, height));
+            ambientParticles.forEach(p => p.update(WORLD_SIZE, WORLD_SIZE));
+            ideas.forEach(idea => idea.update(ideas));
         }
 
         ambientParticles.forEach(p => p.draw(ctx));
-        ideas.forEach(idea => idea.draw(ctx, currentZoom, idea === focusedIdea)); 
+        ideas.forEach(idea => idea.draw(ctx, currentZoom, idea === focusedIdea, camX, camY)); 
 
         ctx.restore();
 
         if (transitionProgress > 0 && zoomedParent) {
             const grad = ctx.createLinearGradient(0, 0, 0, height);
             grad.addColorStop(0, zoomedParent.colorStart || '#3b82f6');
-            grad.addColorStop(1, '#111827');
+            grad.addColorStop(1, '#05070a');
             ctx.globalAlpha = e; 
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, width, height);
@@ -216,13 +206,36 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
+async function completeUplink() {
+    isUplinking = false;
+    const idea = focusedIdea;
+    idea.lastInteractedAt = new Date();
+    idea.isDecayed = false;
+    idea.isWaning = false;
+    
+    stabilizeBtn.innerText = "UPLINK ESTABLISHED";
+    stabilizeBtn.classList.add('bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/40');
+
+    try {
+        await fetch(`/api/ideas/${idea.id}/rescue`, {
+            method: 'PUT',
+            headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+        });
+    } catch (err) { console.error("Rescue failed", err); }
+
+    setTimeout(() => {
+        updateMissionReport(idea);
+        stabilizeBtn.innerText = "ESTABLISH UPLINK";
+        stabilizeBtn.classList.remove('bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/40');
+    }, 2000);
+}
+
 animate();
 
-// --- UI Interaction & Drag Physics ---
+// --- INTERACTION ---
 
 function showModal() {
     modal.classList.remove('hidden-animate');
-    if(ideas.length > 0) cancelBtn.classList.remove('hidden');
     addBtn.classList.add('hidden');
     blackHole.classList.add('opacity-0');
     focusedIdea = null;
@@ -235,13 +248,11 @@ function hideModal() {
     addBtn.classList.remove('hidden');
     blackHole.classList.remove('opacity-0');
     input.value = '';
-    colorInput.value = '';
-    priorityInput.value = '0';
     input.blur();
 }
 
-cancelBtn.addEventListener('click', hideModal);
 addBtn.addEventListener('click', showModal);
+cancelBtn.addEventListener('click', hideModal);
 
 function getPointerPos(e) {
     const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
@@ -249,10 +260,11 @@ function getPointerPos(e) {
     return { x: e.clientX, y: e.clientY };
 }
 
-async function handleStart(e) {
-    if (viewState === 'TRANSITION_IN' || viewState === 'TRANSITION_OUT') return;
+let lastTapTime = 0;
 
-    if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) {
+function handleStart(e) {
+    if (viewState !== 'ATMOSPHERE' && viewState !== 'INSIDE') return;
+    if (!modal.classList.contains('hidden-animate')) {
         hideModal();
         return;
     }
@@ -263,32 +275,26 @@ async function handleStart(e) {
     const isDoubleTap = tapLength < 300 && tapLength > 0;
     lastTapTime = currentTime;
 
+    // World space conversion
+    const worldX = pos.x - (width / 2) - camX;
+    const worldY = pos.y - (height / 2) - camY;
+
     const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
     let found = false;
 
     for (let i = activeArray.length - 1; i >= 0; i--) {
         const idea = activeArray[i];
-        const dist = Math.hypot(idea.x - pos.x, idea.y - pos.y);
-        
-        if (dist < idea.radius) {
+        if (Math.hypot(idea.x - worldX, idea.y - worldY) < idea.radius) {
             found = true;
             focusedIdea = idea;
             updateMissionReport(idea);
 
-            // THE RESCUE: If decayed or waning, restore it!
-            if (idea.isDecayed || idea.isWaning) {
-                idea.lastInteractedAt = new Date();
-                idea.isDecayed = false;
-                idea.isWaning = false;
-                
-                try {
-                    fetch(`/api/ideas/${idea.id}/rescue`, {
-                        method: 'PUT',
-                        headers: { 'X-CSRF-TOKEN': getCsrfToken() }
-                    });
-                } catch (err) { console.error("Rescue failed", err); }
-            }
+            // AUTO-CENTER: Only on initial click
+            // But we'll allow handleMove to override this if dragging starts
+            targetCamX = -idea.x + 150; // Offset slightly for HUD
+            targetCamY = -idea.y;
 
+            // ENTER ZOOM VIEW (Double Tap)
             if (isDoubleTap && viewState === 'ATMOSPHERE' && idea.children && idea.children.length > 0) {
                 enterZoomView(idea);
                 return; 
@@ -296,7 +302,6 @@ async function handleStart(e) {
 
             draggedIdea = idea;
             idea.isDragging = true;
-            if(e.cancelable) e.preventDefault(); 
             break;
         }
     }
@@ -304,93 +309,88 @@ async function handleStart(e) {
     if (!found) {
         focusedIdea = null;
         updateMissionReport(null);
+        isPanning = true;
+        lastMouseX = pos.x;
+        lastMouseY = pos.y;
     }
 }
 
 function handleMove(e) {
-    if (draggedIdea) {
-        if(e.cancelable) e.preventDefault(); 
-        const pos = getPointerPos(e);
-        draggedIdea.x = pos.x;
-        draggedIdea.y = pos.y;
+    const pos = getPointerPos(e);
 
-        // Void Highlight
+    if (draggedIdea) {
+        draggedIdea.x = pos.x - (width / 2) - camX;
+        draggedIdea.y = pos.y - (height / 2) - camY;
+
+        // PREVENT JARRING: Freeze autopilot while actively moving an idea
+        targetCamX = camX;
+        targetCamY = camY;
+
+        // Black Hole is fixed UI, so use screen pos
         const bhRect = blackHole.getBoundingClientRect();
         const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
-        if (distToBH < 100 && viewState === 'ATMOSPHERE') {
-            blackHole.classList.add('active');
-        } else {
-            blackHole.classList.remove('active');
-        }
-    } else {
-        // Hover detection for focusedIdea (mouse only)
-        if (e.type === 'mousemove' && !modal.classList.contains('hidden-animate')) {
-            const pos = getPointerPos(e);
-            const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
-            let found = false;
-            for (let i = activeArray.length - 1; i >= 0; i--) {
-                const idea = activeArray[i];
-                if (Math.hypot(idea.x - pos.x, idea.y - pos.y) < idea.radius) {
-                    if (focusedIdea !== idea) {
-                        focusedIdea = idea;
-                        updateMissionReport(idea);
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            // Optional: don't clear on hover-off to keep the report sticky? 
-            // Let's keep it sticky for now.
-        }
+        if (distToBH < 100) blackHole.classList.add('active');
+        else blackHole.classList.remove('active');
+
+    } else if (isPanning) {
+        targetCamX += (pos.x - lastMouseX);
+        targetCamY += (pos.y - lastMouseY);
+        lastMouseX = pos.x;
+        lastMouseY = pos.y;
     }
 }
 
-async function handleEnd(e) {
+function handleEnd(e) {
+    isPanning = false;
+    isUplinking = false; 
+
     if (draggedIdea) {
         draggedIdea.isDragging = false;
+        
         const pos = getPointerPos(e);
-
+        const bhRect = blackHole.getBoundingClientRect();
+        const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
+        
         // 1. VOID DELETION
-        if (viewState === 'ATMOSPHERE') {
-            const bhRect = blackHole.getBoundingClientRect();
-            const distToBH = Math.hypot(pos.x - (bhRect.left + bhRect.width/2), pos.y - (bhRect.top + bhRect.height/2));
-            
-            if (distToBH < 80) {
-                const ideaId = draggedIdea.id;
-                ideas = ideas.filter(node => node.id !== ideaId);
-                blackHole.classList.remove('active');
-                
-                try {
-                    await fetch(`/api/ideas/${ideaId}`, {
-                        method: 'DELETE',
-                        headers: { 'X-CSRF-TOKEN': getCsrfToken() }
-                    });
-                    // TODO: Particle explosion
-                } catch (err) { console.error("Failed to delete idea", err); }
-                
-                draggedIdea = null;
-                return;
-            }
+        if (distToBH < 80) {
+            deleteIdea(draggedIdea.id);
+            ideas = ideas.filter(n => n.id !== draggedIdea.id);
+            focusedIdea = null;
+            updateMissionReport(null);
+            draggedIdea = null;
+            blackHole.classList.remove('active');
+            return;
         }
 
+        // 2. ABSORPTION / MERGING
         const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
 
         for (let i = 0; i < activeArray.length; i++) {
             const targetIdea = activeArray[i];
             
             if (targetIdea !== draggedIdea) {
+                // Use world coordinates for merging distance
                 const dist = Math.hypot(draggedIdea.x - targetIdea.x, draggedIdea.y - targetIdea.y);
                 
+                // If touching surfaces
                 if (dist < targetIdea.radius + draggedIdea.radius) {
+                    // Restriction: Can't merge inside zoom view yet
                     if (viewState === 'INSIDE') break; 
-                    if (draggedIdea.children.length > 0 && targetIdea.children.length > 0) break;
-                    if (draggedIdea.children && draggedIdea.children.length > 0) break; 
+                    
+                    // Logic: Parent cannot be absorbed by a child, and 2 parents can't merge
+                    if (draggedIdea.children.length > 0) break; 
                     
                     targetIdea.absorb(draggedIdea);
                     ideas = ideas.filter(node => node.id !== draggedIdea.id);
                     
+                    // If the absorbed idea was in focus, clear it
+                    if (focusedIdea === draggedIdea) {
+                        focusedIdea = targetIdea;
+                        updateMissionReport(targetIdea);
+                    }
+
                     try {
-                        await fetch(`/api/ideas/${draggedIdea.id}`, {
+                        fetch(`/api/ideas/${draggedIdea.id}`, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -410,95 +410,78 @@ async function handleEnd(e) {
     }
 }
 
+async function deleteIdea(id) {
+    try {
+        await fetch(`/api/ideas/${id}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+        });
+    } catch (err) { console.error(err); }
+}
+
 canvas.addEventListener('mousedown', handleStart);
 canvas.addEventListener('mousemove', handleMove);
 canvas.addEventListener('mouseup', handleEnd);
 canvas.addEventListener('touchstart', handleStart, { passive: false });
 canvas.addEventListener('touchmove', handleMove, { passive: false });
 canvas.addEventListener('touchend', handleEnd);
-canvas.addEventListener('touchcancel', handleEnd);
 
-// --- Boot Sequence ---
+// Uplink Long Press
+stabilizeBtn.addEventListener('mousedown', () => {
+    isUplinking = true;
+    uplinkStartTime = Date.now();
+});
+stabilizeBtn.addEventListener('mouseup', () => {
+    isUplinking = false;
+    uplinkValue = 0;
+    uplinkProgress.style.width = '0%';
+});
+stabilizeBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    isUplinking = true;
+    uplinkStartTime = Date.now();
+});
+stabilizeBtn.addEventListener('touchend', () => {
+    isUplinking = false;
+});
+
+// --- Boot ---
 async function loadIdeas() {
     try {
         const response = await fetch('/api/ideas'); 
-        if (!response.ok) throw new Error("Backend not ready yet");
         const data = await response.json();
         
-        completedIdeas = data.completed || [];
-
         data.active.forEach(item => {
-            const spawnX = (Math.random() * 0.6 + 0.2) * width;
-            const spawnY = (Math.random() * 0.6 + 0.2) * height;
+            // SPAWNING: Initial jitter around world center (0,0)
+            const spawnX = (Math.random() - 0.5) * 400;
+            const spawnY = (Math.random() - 0.5) * 400;
 
-            const newParent = new IdeaNode(
-                item.id, 
-                item.text, 
-                spawnX, 
-                spawnY, 
-                item.color, 
-                item.priority, 
-                ctx, 
-                item.last_interacted_at
-            );
-            if (item.children && item.children.length > 0) {
-                item.children.forEach(child => newParent.absorb(child));
-            }
-            ideas.push(newParent);
+            const node = new IdeaNode(item.id, item.text, spawnX, spawnY, item.color, item.priority, ctx, item.last_interacted_at);
+            if (item.children) item.children.forEach(c => node.absorb(c));
+            ideas.push(node);
         });
 
-        if (ideas.length > 0) hideModal(); else showModal(); 
-    } catch (error) {
-        console.warn("Running in memory.", error);
-        if(ideas.length === 0) showModal(); 
-    }
+        if (ideas.length === 0) showModal(); else hideModal();
+    } catch (err) { console.warn(err); showModal(); }
 }
 
 form.addEventListener('submit', async (e) => {
-    e.preventDefault(); 
+    e.preventDefault();
     const text = input.value.trim();
-    const color = colorInput.value;
-    const priority = parseInt(priorityInput.value) || 0;
-    const submitBtn = document.getElementById('submit-btn');
-    
-    if (text) {
-        submitBtn.innerText = "Saving...";
-        submitBtn.disabled = true;
+    if (!text) return;
 
-        try {
-            const response = await fetch('/api/ideas', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
-                body: JSON.stringify({ text, color, priority })
-            });
-
-            if (!response.ok) throw new Error("Failed");
-            const savedItem = await response.json();
-            
-            const spawnX = (Math.random() * 0.6 + 0.2) * width;
-            const spawnY = (Math.random() * 0.6 + 0.2) * height;
-
-            ideas.push(new IdeaNode(
-                savedItem.id, 
-                savedItem.text, 
-                spawnX, 
-                spawnY, 
-                savedItem.color, 
-                savedItem.priority, 
-                ctx, 
-                savedItem.last_interacted_at
-            ));
-            hideModal();
-        } catch (error) {
-            const spawnX = (Math.random() * 0.6 + 0.2) * width;
-            const spawnY = (Math.random() * 0.6 + 0.2) * height;
-            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx));
-            hideModal();
-        } finally {
-            submitBtn.innerText = "Add to Atmosphere";
-            submitBtn.disabled = false;
-        }
-    }
+    try {
+        const response = await fetch('/api/ideas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
+            body: JSON.stringify({ text, color: colorInput.value, priority: priorityInput.value })
+        });
+        const saved = await response.json();
+        const spawnX = (Math.random() - 0.5) * 200;
+        const spawnY = (Math.random() - 0.5) * 200;
+        ideas.push(new IdeaNode(saved.id, saved.text, spawnX, spawnY, saved.color, saved.priority, ctx, saved.last_interacted_at));
+        hideModal();
+    } catch (err) { console.error(err); }
 });
 
 loadIdeas();

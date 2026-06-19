@@ -1,29 +1,32 @@
 export class Particle {
-    constructor(canvasWidth, canvasHeight) {
-        this.x = Math.random() * canvasWidth;
-        this.y = Math.random() * canvasHeight;
+    constructor(worldWidth, worldHeight) {
+        this.x = (Math.random() - 0.5) * worldWidth;
+        this.y = (Math.random() - 0.5) * worldHeight;
         this.z = Math.random(); 
         
         this.radius = (this.z * 1.5) + 0.5; 
-        const speedBase = (this.z * 0.3) + 0.05;
+        const speedBase = (this.z * 0.2) + 0.05;
         
         this.vx = (Math.random() - 0.5) * speedBase;
-        this.vy = -(Math.random() * speedBase) - 0.1;
+        this.vy = (Math.random() - 0.5) * speedBase;
         
-        this.baseAlpha = (this.z * 0.5) + 0.1;
+        this.baseAlpha = (this.z * 0.4) + 0.1;
         this.alphaOffset = Math.random() * Math.PI * 2;
         this.twinkleSpeed = (Math.random() * 0.03) + 0.01;
     }
 
-    update(canvasWidth, canvasHeight) {
+    update(worldWidth, worldHeight) {
         this.x += this.vx;
         this.y += this.vy;
         this.alphaOffset += this.twinkleSpeed;
 
-        if (this.x < -10) this.x = canvasWidth + 10;
-        if (this.x > canvasWidth + 10) this.x = -10;
-        if (this.y < -10) this.y = canvasHeight + 10;
-        if (this.y > canvasHeight + 10) this.y = -10;
+        const hw = worldWidth / 2;
+        const hh = worldHeight / 2;
+
+        if (this.x < -hw) this.x = hw;
+        if (this.x > hw) this.x = -hw;
+        if (this.y < -hh) this.y = hh;
+        if (this.y > hh) this.y = -hh;
     }
 
     draw(ctx) {

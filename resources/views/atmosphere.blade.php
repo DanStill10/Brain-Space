@@ -10,34 +10,112 @@
     
     @vite(['resources/css/app.css', 'resources/js/atmosphere.js'])
 </head>
-<body>
+<body class="bg-[#0b0f19] overflow-hidden">
+
+    <!-- 
+      The Atmosphere View (The Presentation Layer)
+
+      This blade template is the solitary canvas upon which our entire frontend application runs.
+      Why so little HTML? Because the vast majority of our rendering happens inside the `<canvas>` 
+      element via Javascript. 
+      
+      The HTML defined here represents the "HUD" (Heads-Up Display) — the fixed UI elements 
+      like the Mission Report panel, the Black Hole, and the Modal overlay. These sit *on top* 
+      of the canvas, providing standard web interactions (forms, buttons) without interfering 
+      with the WebGL/Canvas rendering context underneath.
+    -->
+
+    <style>
+        .carbon-panel {
+            background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+            background-image: 
+                radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0);
+            background-size: 8px 8px;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(59, 130, 246, 0.1);
+        }
+        .carbon-glow {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            border: 1px solid transparent;
+            background: linear-gradient(to bottom, #3b82f6, transparent, #3b82f6) border-box;
+            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: destination-out;
+            mask-composite: exclude;
+            opacity: 0.3;
+        }
+        .scan-line {
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(to right, transparent, #3b82f6, transparent);
+            opacity: 0.2;
+            animation: scan 4s linear infinite;
+        }
+        @keyframes scan {
+            from { top: 0% }
+            to { top: 100% }
+        }
+        #uplink-progress {
+            width: 0%;
+            height: 100%;
+            background: #3b82f6;
+            box-shadow: 0 0 10px #3b82f6;
+            transition: width 0.1s linear;
+        }
+        .modal {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
 
     <canvas id="atmosphere"></canvas>
 
     <div id="ui-layer">
         
         <!-- Mission Report Panel (Left Edge) -->
-        <div id="mission-report" class="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 w-80 p-8 flex flex-col space-y-4 opacity-0 transition-all duration-500 translate-x-[-20px]">
-            <div class="border-l-2 border-blue-500/50 pl-6 space-y-1">
-                <div class="text-[10px] font-bold tracking-[0.3em] text-blue-400 uppercase opacity-50">Object Identification</div>
-                <h1 id="report-title" class="text-3xl font-light tracking-tight text-white leading-tight">--</h1>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
-                <div>
-                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Priority Index</div>
-                    <div id="report-priority" class="text-xl font-mono text-white">0.0</div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Status</div>
-                    <div id="report-status" class="text-xl font-mono text-emerald-400">Stable</div>
-                </div>
-            </div>
+        <div id="mission-report" class="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 w-80 p-1 flex flex-col opacity-0 transition-all duration-500 translate-x-[-20px] z-50">
+            <div class="carbon-panel p-8 rounded-xl relative overflow-hidden">
+                <div class="carbon-glow rounded-xl"></div>
+                <div class="scan-line"></div>
+                
+                <div class="relative z-10 space-y-6">
+                    <div class="border-l-2 border-blue-500/50 pl-6 space-y-1">
+                        <div class="text-[10px] font-bold tracking-[0.3em] text-blue-400 uppercase opacity-50">Object Identification</div>
+                        <h1 id="report-title" class="text-2xl font-light tracking-tight text-white leading-tight">--</h1>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                        <div>
+                            <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Priority Index</div>
+                            <div id="report-priority" class="text-xl font-mono text-white">0.0</div>
+                        </div>
+                        <div>
+                            <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Status</div>
+                            <div id="report-status" class="text-xl font-mono text-emerald-400">Stable</div>
+                        </div>
+                    </div>
 
-            <div class="pt-2">
-                <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">Composition</div>
-                <div id="report-children" class="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-line">
-                    No sub-modules detected.
+                    <div class="pt-2">
+                        <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">Composition</div>
+                        <div id="report-children" class="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-line max-h-32 overflow-y-auto">
+                            No sub-modules detected.
+                        </div>
+                    </div>
+
+                    <div id="rescue-sector" class="pt-4 border-t border-white/5 hidden">
+                        <div class="mb-2 flex justify-between items-end">
+                            <span class="text-[9px] font-bold tracking-[0.2em] text-blue-400 uppercase">Uplink Status</span>
+                            <span id="uplink-percent" class="text-[10px] font-mono text-white">0%</span>
+                        </div>
+                        <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden mb-4">
+                            <div id="uplink-progress"></div>
+                        </div>
+                        <button id="stabilize-btn" class="pointer-events-auto w-full py-3 bg-blue-600/20 border border-blue-500/40 rounded-lg text-blue-400 text-[10px] font-black tracking-[0.2em] uppercase hover:bg-blue-600/40 hover:text-white transition-all active:scale-[0.98]">
+                            Establish Uplink
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -50,7 +128,7 @@
             <span class="absolute z-20 text-[11px] font-black tracking-[0.2em] text-black uppercase opacity-0 transition-opacity bh-label" style="text-shadow: 0 0 10px #fff, 0 0 15px #fff, 0 0 20px #fff, 0 0 25px #fff;">Void</span>
         </div>
 
-        <!-- The Escape Hatch (Moved OUTSIDE the modal!) -->
+        <!-- The Escape Hatch -->
         <button type="button" id="back-btn" class="hidden pointer-events-auto absolute top-4 left-4 bg-slate-800 border-2 border-slate-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg z-[100] transition-all hover:bg-slate-700">
             ← Back to Atmosphere
         </button>

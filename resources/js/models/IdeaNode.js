@@ -36,6 +36,22 @@ export function wrapText(context, text, maxWidth, maxLines) {
     return lines;
 }
 
+/**
+ * Class IdeaNode
+ * 
+ * Think of this class as the "atomic unit" of our Brain Space graph. It's much 
+ * more than just a data container for an idea; it's a living, breathing object
+ * that manages its own state, physics, rendering logic, and lifecycle.
+ * 
+ * Why approach it this way? By encapsulating these concerns (movement, collision, 
+ * decay, drawing) inside the `IdeaNode`, we make our main animation loop much 
+ * cleaner and more scalable. Instead of having a massive, monolithic script 
+ * managing everything, each `IdeaNode` takes responsibility for its own behavior.
+ * 
+ * This is the essence of Object-Oriented Programming (OOP) in a frontend context: 
+ * bundle data and behavior together to build complex, interactive systems from 
+ * manageable, reusable components.
+ */
 export class IdeaNode {
     constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt) {
         this.id = dbId; 
@@ -45,14 +61,21 @@ export class IdeaNode {
         this.priority = priority || 0;
         this.lastInteractedAt = lastInteractedAt ? new Date(lastInteractedAt) : new Date();
         
-        // Radius Animation Setup
-        this.baseRadius = Math.max(50, Math.min(95, text.length * 2.5)) + (this.priority * 4);
+        // --- SCALE & LUMINOSITY ---
+        // Reduced base radius (35px - 70px range)
+        this.baseRadius = Math.max(35, Math.min(65, text.length * 1.8)) + (this.priority * 2.5);
         this.radius = 0; 
         this.targetRadius = this.baseRadius;
 
-        // Physics
-        this.vx = (Math.random() - 0.5) * 0.5;
-        this.vy = (Math.random() - 0.5) * 0.5;
+        // --- PHYSICS & INERTIA ---
+        const inertiaFactor = 1 - (this.priority / 10); 
+        this.vx = (Math.random() - 0.5) * (2.5 * inertiaFactor); // Boosted base speed
+        this.vy = (Math.random() - 0.5) * (2.5 * inertiaFactor);
+        
+        // Individualized Sector Logic
+        // Some ideas like being close, others like drifting far
+        this.personalSectorRadius = 300 + (Math.random() * 500); 
+        this.gravitationalSensitivity = 0.0001 + (Math.random() * 0.0004);
         
         // Colors
         const selectedTheme = colorTheme && colorMap[colorTheme] ? colorTheme : colorKeys[Math.floor(Math.random() * colorKeys.length)];
@@ -64,18 +87,18 @@ export class IdeaNode {
         const maxTextWidth = this.baseRadius * 1.6; 
         this.lines = wrapText(ctx, this.text, maxTextWidth, 3); 
 
-        // Drag & Lava Setup
+        // State
         this.isDragging = false;
         this.children = [];
-
-        // Decay & Gravity State
         this.isDecayed = false;
         this.mass = this.baseRadius; 
         this.vortexAngle = Math.random() * Math.PI * 2; 
+
+        // Glitch state for unstable ideas
+        this.glitchTimer = 0;
     }
 
     absorb(childNode) {
-        // --- PERSISTENCE FIX ---
         let cStart = childNode.colorStart;
         let cEnd = childNode.colorEnd;
 
@@ -90,61 +113,52 @@ export class IdeaNode {
             text: childNode.text,
             colorStart: cStart,
             colorEnd: cEnd,
-            radius: 18,
-            offsetX: (Math.random() - 0.5) * 20,
-            offsetY: (Math.random() - 0.5) * 20,
-            dx: (Math.random() - 0.5) * 1.5,
-            dy: (Math.random() - 0.5) * 1.5
+            radius: 12, // Scaled down children
+            offsetX: (Math.random() - 0.5) * 15,
+            offsetY: (Math.random() - 0.5) * 15,
+            dx: (Math.random() - 0.5) * 1.2,
+            dy: (Math.random() - 0.5) * 1.2
         });
 
-        this.targetRadius = this.baseRadius + (this.children.length * 10);
-        this.mass = this.baseRadius + (this.children.length * 15);
+        this.targetRadius = this.baseRadius + (this.children.length * 8);
+        this.mass = this.baseRadius + (this.children.length * 12);
     }
 
     update(ideasArray, width, height) {
         const msPerDay = 86400000;
         const age = new Date() - this.lastInteractedAt;
         
-        this.isWaning = age > msPerDay && age <= msPerDay * 3;
-        this.isDecayed = age > msPerDay * 3;
+        // Priority affects stability (decay speed)
+        // High priority lasts longer
+        const decayMultiplier = 1 + (this.priority * 0.5);
+        this.isWaning = age > msPerDay * decayMultiplier && age <= msPerDay * 3 * decayMultiplier;
+        this.isDecayed = age > msPerDay * 3 * decayMultiplier;
 
-        const activeMass = this.baseRadius + (this.children.length * 15);
+        const activeMass = this.baseRadius + (this.children.length * 12);
         this.mass = this.isDecayed ? 0.1 : activeMass;
 
         this.radius += (this.targetRadius - this.radius) * 0.1;
 
-        // Visual Rotation (Space-Age Accretion Disk Speed)
         if (this.children.length > 0) {
             this.vortexAngle += 0.008 + (this.children.length * 0.003);
         }
 
         if (!this.isDragging) {
-            let multiplier = this.isDecayed ? 0.2 : (this.isWaning ? 0.5 : 1.0);
+            let multiplier = this.isDecayed ? 0.15 : (this.isWaning ? 0.4 : 1.0);
+            
+            // --- INDIVIDUALIZED SOFT SECTOR ---
+            const distToCenter = Math.hypot(this.x, this.y);
+            if (distToCenter > this.personalSectorRadius) {
+                const pullStrength = this.gravitationalSensitivity * (distToCenter - this.personalSectorRadius);
+                this.vx -= (this.x / distToCenter) * pullStrength;
+                this.vy -= (this.y / distToCenter) * pullStrength;
+            }
+
             this.x += this.vx * multiplier;
             this.y += this.vy * multiplier;
 
-            let currentDamping = 0.995;
+            let currentDamping = 0.995; // Slightly less damping to preserve momentum
 
-            const minSpeed = this.isDecayed ? 0.05 : 0.15;
-            const currentSpeed = Math.hypot(this.vx, this.vy);
-            if (currentSpeed < minSpeed) {
-                const angle = Math.random() * Math.PI * 2;
-                this.vx += Math.cos(angle) * 0.05;
-                this.vy += Math.sin(angle) * 0.05;
-            }
-
-            if (this.isDecayed) {
-                const steerForce = 0.02;
-                if (this.x < width / 2) this.vx -= steerForce; else this.vx += steerForce;
-                if (this.y < height / 2) this.vy -= steerForce; else this.vy += steerForce;
-                const maxDecaySpeed = 0.5;
-                const speed = Math.hypot(this.vx, this.vy);
-                if (speed > maxDecaySpeed) {
-                    this.vx = (this.vx / speed) * maxDecaySpeed;
-                    this.vy = (this.vy / speed) * maxDecaySpeed;
-                }
-            }
-            
             for (let other of ideasArray) {
                 if (other === this) continue;
 
@@ -156,50 +170,19 @@ export class IdeaNode {
                     dy = Math.random() - 0.5;
                     distance = Math.sqrt(dx * dx + dy * dy);
                 }
-                const minDistance = this.radius + other.radius;
-
-                if (this.children.length > 0 && other.children.length > 0) {
-                    const repelZone = minDistance + 40; 
-                    if (distance < repelZone) {
-                        const proximity = (1 - distance / repelZone);
-                        const force = proximity * 4; 
-                        const angle = Math.atan2(dy, dx);
-                        this.vx -= Math.cos(angle) * force;
-                        this.vy -= Math.sin(angle) * force;
-                        if (other.isDragging) {
-                            this.vx -= Math.cos(angle) * force * 2.5;
-                            this.vy -= Math.sin(angle) * force * 2.5;
-                        }
-                        currentDamping = 1.0; 
-                    }
-                }
-
-                if (other.isDragging) continue;
-
-                if (!this.isDecayed && this.children.length > 0 && other.children.length === 0 && distance < 450 && distance > minDistance) {
-                    const gravitationalConstant = 2.5; 
-                    const forceStrength = (this.mass / (distance * distance)) * gravitationalConstant; 
-                    const ax = (dx / distance) * forceStrength;
-                    const ay = (dy / distance) * forceStrength;
-                    const tx = -ay * 1.2; 
-                    const ty = ax * 1.2;
-                    other.vx -= (ax * 0.3) + tx;
-                    other.vy -= (ay * 0.3) + ty;
-                }
+                const minDistance = (this.radius + other.radius) * 1.5; // Increased repulsion zone
 
                 if (distance < minDistance) {
                     const angle = Math.atan2(dy, dx);
                     const overlap = minDistance - distance;
-                    const isParentCollision = this.children.length > 0 && other.children.length > 0;
                     const totalMass = this.mass + other.mass;
-                    const r1 = isParentCollision ? 0.5 : (other.mass / totalMass);
-                    const r2 = isParentCollision ? 0.5 : (this.mass / totalMass);
-                    const correctionStrength = isParentCollision ? 0.9 : 1.0;
+                    const r1 = other.mass / totalMass;
+                    const r2 = this.mass / totalMass;
 
-                    this.x -= overlap * Math.cos(angle) * r1 * correctionStrength;
-                    this.y -= overlap * Math.sin(angle) * r1 * correctionStrength;
-                    other.x += overlap * Math.cos(angle) * r2 * correctionStrength;
-                    other.y += overlap * Math.sin(angle) * r2 * correctionStrength;
+                    this.x -= overlap * Math.cos(angle) * r1;
+                    this.y -= overlap * Math.sin(angle) * r1;
+                    other.x += overlap * Math.cos(angle) * r2;
+                    other.y += overlap * Math.sin(angle) * r2;
                     
                     const vRelX = this.vx - other.vx;
                     const vRelY = this.vy - other.vy;
@@ -207,42 +190,23 @@ export class IdeaNode {
                     const ny = dy / distance;
                     const dot = vRelX * nx + vRelY * ny;
                     if (dot < 0) {
-                        const restitution = 0.7;
-                        const m1_eff = isParentCollision ? 200 : this.mass;
-                        const m2_eff = isParentCollision ? 200 : other.mass;
-                        const impulse = ((1 + restitution) * dot) / (m1_eff + m2_eff);
-                        this.vx -= impulse * m2_eff * nx;
-                        this.vy -= impulse * m2_eff * ny;
-                        other.vx += impulse * m1_eff * nx;
-                        other.vy += impulse * m1_eff * ny;
+                        const restitution = 0.8; // More bounciness
+                        const impulse = ((1 + restitution) * dot) / (this.mass + other.mass);
+                        this.vx -= impulse * other.mass * nx * 1.5;
+                        this.vy -= impulse * other.mass * ny * 1.5;
+                        other.vx += impulse * this.mass * nx * 1.5;
+                        other.vy += impulse * this.mass * ny * 1.5;
                     }
-                    if (isParentCollision) currentDamping = 1.0;
                 }
             }
 
             this.vx *= currentDamping;
             this.vy *= currentDamping;
-
-            const margin = this.radius + 40;
-            const pushBack = 0.05;
-            if (this.x < margin) this.vx += pushBack;
-            if (this.x > width - margin) this.vx -= pushBack;
-            if (this.y < margin) this.vy += pushBack;
-            if (this.y > height - margin) this.vy -= pushBack;
-
-            if (this.x < this.radius) {
-                this.x = this.radius;
-                this.vx = Math.abs(this.vx) * 0.5;
-            } else if (this.x > width - this.radius) {
-                this.x = width - this.radius;
-                this.vx = -Math.abs(this.vx) * 0.5;
-            }
-            if (this.y < this.radius) {
-                this.y = this.radius;
-                this.vy = Math.abs(this.vy) * 0.5;
-            } else if (this.y > height - this.radius) {
-                this.y = height - this.radius;
-                this.vy = -Math.abs(this.vy) * 0.5;
+            
+            // Random jitter for "life"
+            if (Math.random() > 0.99) {
+                this.vx += (Math.random() - 0.5) * 0.5;
+                this.vy += (Math.random() - 0.5) * 0.5;
             }
         }
 
@@ -257,17 +221,29 @@ export class IdeaNode {
                 }
             });
         }
+
+        if (this.isDecayed || this.isWaning) {
+            this.glitchTimer += 0.05;
+        }
     }
 
-    draw(ctx, currentZoom = 1, isFocused = false) {
+    draw(ctx, currentZoom = 1, isFocused = false, camOffsetX = 0, camOffsetY = 0) {
         if (this.radius < 1) return;
+
+        // --- GLITCH EFFECT ---
+        let drawX = this.x;
+        let drawY = this.y;
+        if ((this.isDecayed || this.isWaning) && Math.random() > 0.95) {
+            drawX += (Math.random() - 0.5) * 4;
+            drawY += (Math.random() - 0.5) * 4;
+        }
 
         const isZooming = currentZoom > 1.001;
 
         // --- DRAW RETICLE (LOCK-ON) ---
         if (isFocused) {
             ctx.save();
-            ctx.translate(this.x, this.y);
+            ctx.translate(drawX, drawY);
             
             const reticleSize = this.radius + 15;
             const bracketLen = 12;
@@ -278,11 +254,9 @@ export class IdeaNode {
             ctx.shadowBlur = 15;
             ctx.shadowColor = glowColor;
 
-            // Pulsing animation for reticle
             const pulse = Math.sin(Date.now() * 0.01) * 3;
             const s = reticleSize + pulse;
 
-            // Draw 4 corners [ + ]
             for (let i = 0; i < 4; i++) {
                 ctx.rotate(Math.PI / 2);
                 ctx.beginPath();
@@ -292,7 +266,6 @@ export class IdeaNode {
                 ctx.stroke();
             }
 
-            // Crosshair center (very faint)
             ctx.globalAlpha = 0.3;
             ctx.beginPath();
             ctx.moveTo(-5, 0); ctx.lineTo(5, 0);
@@ -303,12 +276,11 @@ export class IdeaNode {
         }
 
         // --- DRAW SPACE-AGE VORTEX ---
-        // Optimization: Disable vortex during zoom to save GPU cycles
         if (this.children.length > 0 && !this.isDecayed && currentZoom < 1.2) {
             ctx.save();
-            ctx.translate(this.x, this.y);
+            ctx.translate(drawX, drawY);
             
-            const gravityRadius = 450;
+            const gravityRadius = this.radius * 4;
             const bloomAlpha = (0.02 + (this.children.length * 0.005)) * (isZooming ? 0.3 : 1);
             const grad = ctx.createRadialGradient(0, 0, this.radius, 0, 0, gravityRadius);
             grad.addColorStop(0, `${this.colorStart}${Math.floor(bloomAlpha * 255).toString(16).padStart(2, '0')}`);
@@ -318,9 +290,9 @@ export class IdeaNode {
             ctx.arc(0, 0, gravityRadius, 0, Math.PI * 2);
             ctx.fill();
 
-            const numRings = Math.min(4, Math.ceil(this.children.length / 1.5));
+            const numRings = Math.min(3, Math.ceil(this.children.length / 2));
             for (let i = 1; i <= numRings; i++) {
-                const ringRadius = this.radius + (i * 35) + (Math.sin(Date.now() * 0.001) * 2);
+                const ringRadius = this.radius + (i * 25) + (Math.sin(Date.now() * 0.001) * 2);
                 const rotationSpeed = this.vortexAngle * (i % 2 === 0 ? -1 : 1.2) * (0.8 / i);
                 
                 ctx.save();
@@ -328,16 +300,12 @@ export class IdeaNode {
                 for (let f = 0; f < 3; f++) {
                     ctx.rotate((Math.PI * 2) / 3);
                     ctx.beginPath();
-                    const arcLen = (Math.PI / 4) + (this.children.length * 0.1);
+                    const arcLen = (Math.PI / 4) + (this.children.length * 0.08);
                     ctx.arc(0, 0, ringRadius, 0, arcLen);
                     ctx.strokeStyle = this.colorStart;
-                    ctx.lineWidth = 1 + (i * 0.5);
+                    ctx.lineWidth = 1;
                     ctx.lineCap = 'round';
                     ctx.globalAlpha = (0.1 + (this.children.length * 0.02)) / i;
-                    if (!isZooming) { // Only glow when static
-                        ctx.shadowBlur = 10;
-                        ctx.shadowColor = this.colorStart;
-                    }
                     ctx.stroke();
                 }
                 ctx.restore();
@@ -359,63 +327,38 @@ export class IdeaNode {
 
         ctx.globalAlpha = alpha;
         
-        // PERFORMANCE BOOST: Disable shadowBlur during zoom
+        // Priority-based Luminosity
+        const lumGlow = 10 + (this.priority * 8);
         if (!isZooming) {
             ctx.shadowColor = drawColorStart;
-            ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
-        } else {
-            ctx.shadowBlur = 0;
+            ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : lumGlow);
         }
 
         const gradient = ctx.createLinearGradient(
-            this.x - this.radius, this.y - this.radius, 
-            this.x + this.radius, this.y + this.radius
+            drawX - this.radius, drawY - this.radius, 
+            drawX + this.radius, drawY + this.radius
         );
         gradient.addColorStop(0, drawColorStart);
         gradient.addColorStop(1, drawColorEnd);
 
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-
-        let surfaceAlpha = 1.0;
-        if (currentZoom > 1.5) {
-            surfaceAlpha = Math.max(0, 1.0 - ((currentZoom - 1.5) * 0.5));
-        }
+        ctx.arc(drawX, drawY, this.radius, 0, Math.PI * 2);
 
         if (this.children.length > 0) {
             ctx.globalAlpha = 0.2 * alpha;
             ctx.fillStyle = gradient;
             ctx.fill();
-            ctx.globalAlpha = 0.7 * surfaceAlpha * alpha; 
+            ctx.globalAlpha = 0.7 * alpha; 
             ctx.strokeStyle = drawColorStart;
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.stroke();
             ctx.globalAlpha = 1.0 * alpha; 
             ctx.shadowBlur = 0;
 
             this.children.forEach(child => {
-                let childColorStart = child.colorStart;
-                let childColorEnd = child.colorEnd;
-                if (this.isDecayed) {
-                    childColorStart = '#64748b';
-                    childColorEnd = '#334155';
-                }
-
                 ctx.beginPath();
-                ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
-                
-                // PERFORMANCE BOOST: Solid colors instead of radial gradients during zoom
-                if (isZooming) {
-                    ctx.fillStyle = childColorStart;
-                } else {
-                    const childGrad = ctx.createRadialGradient(
-                        this.x + child.offsetX, this.y + child.offsetY, 0,
-                        this.x + child.offsetX, this.y + child.offsetY, child.radius
-                    );
-                    childGrad.addColorStop(0, childColorStart);
-                    childGrad.addColorStop(1, childColorEnd);
-                    ctx.fillStyle = childGrad;
-                }
+                ctx.arc(drawX + child.offsetX, drawY + child.offsetY, child.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.isDecayed ? '#64748b' : child.colorStart;
                 ctx.fill();
             });
         } else {
@@ -424,51 +367,47 @@ export class IdeaNode {
         }
 
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = alpha;
-
-        if (this.radius > 20 && surfaceAlpha > 0) {
-            if (isFocused) {
-                // Draw Leader Line to the left panel
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(this.x - this.radius - 10, this.y);
-                
-                // Mission Report is roughly at x=320 (80w + 8p)
-                const targetX = 320; 
-                const targetY = window.innerHeight / 2;
-
-                ctx.setLineDash([5, 5]);
-                ctx.strokeStyle = this.colorStart;
-                ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.4;
-
-                // Simple elbow joint for the leader line
-                const midX = (this.x + targetX) / 2;
-                ctx.lineTo(midX, this.y);
-                ctx.lineTo(midX, targetY);
-                ctx.lineTo(targetX, targetY);
-                
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            if (this.priority > 0) {
-                const badgeRadius = 10;
-                const angle = -Math.PI / 4; 
-                const badgeX = this.x + Math.cos(angle) * this.radius;
-                const badgeY = this.y + Math.sin(angle) * this.radius;
-                ctx.beginPath();
-                ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
-                ctx.fillStyle = '#1e293b'; 
-                ctx.fill();
-                ctx.strokeStyle = drawColorStart;
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 11px system-ui';
-                ctx.fillText(this.priority.toString(), badgeX, badgeY);
-            }
-        }
         ctx.globalAlpha = 1.0;
+
+        // --- TACTICAL LEADER LINE ---
+        if (isFocused) {
+            ctx.save();
+            // Reset to screen coordinates for leader line
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            
+            const screenX = (drawX + camOffsetX) + (window.innerWidth / 2);
+            const screenY = (drawY + camOffsetY) + (window.innerHeight / 2);
+            const meridian = window.innerHeight / 2;
+
+            // Start from fixed HUD port
+            const startX = 330; 
+            const startY = meridian;
+
+            // Find point on circumference closest to startX, startY
+            const dx = startX - screenX;
+            const dy = startY - screenY;
+            const dist = Math.hypot(dx, dy);
+            const anchorX = screenX + (dx / dist) * (this.radius + 5);
+            const anchorY = screenY + (dy / dist) * (this.radius + 5);
+
+            // Seamless Straight Line:
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(anchorX, anchorY);
+
+            ctx.strokeStyle = this.colorStart;
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.5;
+            ctx.stroke();
+
+            // Intersection point (glow)
+            ctx.beginPath();
+            ctx.arc(anchorX, anchorY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = this.colorStart;
+            ctx.fill();
+
+            ctx.restore();
+        }
     }
 }
