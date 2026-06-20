@@ -1,4 +1,4 @@
-import { Particle } from './models/Particle.js';
+import { Particle } from './models/particle.js';
 import { IdeaNode } from './models/IdeaNode.js';
 
 // --- Global State & DOM Elements ---
