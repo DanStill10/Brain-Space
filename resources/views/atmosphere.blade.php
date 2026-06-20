@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="auth-check" content="{{ auth()->check() ? 'true' : 'false' }}">
     <title>Brain Space</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -109,6 +110,35 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
+        </button>
+
+        <div id="auth-modal" class="modal w-11/12 max-w-md rounded-2xl p-6 shadow-2xl text-white hidden-animate absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[200]">
+            <h2 id="auth-title" class="text-2xl font-semibold mb-2 tracking-tight">Access Your Brain Space</h2>
+            <p id="auth-subtitle" class="text-slate-400 text-sm mb-6">Log in or create an account to stabilize your atmosphere.</p>
+            
+            <form id="auth-form">
+                <div id="auth-name-group" class="hidden mb-4">
+                    <input type="text" id="auth-name" class="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" placeholder="Name">
+                </div>
+                <div class="mb-4">
+                    <input type="email" id="auth-email" class="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" placeholder="Email" required>
+                </div>
+                <div class="mb-6">
+                    <input type="password" id="auth-password" class="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" placeholder="Password" required>
+                </div>
+                <div id="auth-confirm-group" class="hidden mb-6">
+                    <input type="password" id="auth-password-confirm" class="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" placeholder="Confirm Password">
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <button type="button" id="auth-toggle-btn" class="text-xs text-blue-400 hover:text-blue-300 transition-colors">Need an account? Register</button>
+                    <button type="submit" id="auth-submit-btn" class="px-5 py-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium rounded-lg shadow transition-colors">Log In</button>
+                </div>
+            </form>
+        </div>
+
+        <button type="button" id="logout-btn" class="{{ auth()->check() ? '' : 'hidden' }} pointer-events-auto absolute bottom-4 left-4 text-slate-500 hover:text-rose-400 text-[10px] font-black tracking-[0.2em] uppercase transition-colors z-[100]">
+            Disconnect
         </button>
 
     </div>

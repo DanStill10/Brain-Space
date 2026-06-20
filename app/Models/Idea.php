@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Idea extends Model
 {
     // Tell Laravel which columns we are allowed to fill with data
-    protected $fillable = ['text', 'color', 'priority', 'parent_id', 'last_interacted_at', 'is_completed', 'completed_at'];
+    protected $fillable = ['user_id', 'text', 'color', 'priority', 'parent_id', 'last_interacted_at', 'is_completed', 'completed_at'];
 
     // Establish the relationship
     public function user(): BelongsTo

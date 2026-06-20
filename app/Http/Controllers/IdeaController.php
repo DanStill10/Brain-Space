@@ -10,14 +10,14 @@ class IdeaController extends Controller
 {
     public function index()
     {
-        $ideas = Idea::whereNull('parent_id')
+        $ideas = auth()->user()->ideas()->whereNull('parent_id')
                     ->where('is_completed', false)
                     ->with(['children' => function($query) {
                         $query->where('is_completed', false);
                     }])
                     ->get();
 
-        $completed = Idea::where('is_completed', true)->get(['id', 'text', 'color', 'completed_at']);
+        $completed = auth()->user()->ideas()->where('is_completed', true)->get(['id', 'text', 'color', 'completed_at']);
 
         return response()->json([
             'active' => $ideas,
@@ -44,7 +44,7 @@ class IdeaController extends Controller
             'parent_id' => 'nullable|exists:ideas,id' 
         ]);
 
-        $idea = Idea::create([
+        $idea = auth()->user()->ideas()->create([
             'text' => $request->text,
             'color' => $request->color,
             'priority' => $request->priority ?? 0,
