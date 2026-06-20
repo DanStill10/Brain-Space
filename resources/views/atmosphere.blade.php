@@ -7,8 +7,6 @@
     <meta name="auth-check" content="{{ auth()->check() ? 'true' : 'false' }}">
     <title>Brain Space</title>
     
-    <script src="https://cdn.tailwindcss.com"></script>
-    
     @vite(['resources/css/app.css', 'resources/js/atmosphere.js'])
 </head>
 <body>
