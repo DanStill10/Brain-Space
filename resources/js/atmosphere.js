@@ -37,7 +37,9 @@ const reportChildren = document.getElementById('report-children');
 let width, height;
 let ideas = [];
 let completedIdeas = []; // For constellations
-let ambientParticles = [];
+let ambientDust = [];
+let legacyStars = []; // For future completed goals (Constellations)
+let transientFX = []; // For future Supernovas/Comets
 let draggedIdea = null; 
 let focusedIdea = null;
 
@@ -92,13 +94,39 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-function initParticles() {
-    ambientParticles = [];
+function initAmbientDust() {
+    ambientDust = [];
     for(let i = 0; i < 150; i++) {
-        ambientParticles.push(new Particle(width, height));
+        ambientDust.push(new Particle(width, height));
     }
 }
-initParticles();
+initAmbientDust();
+
+function drawNebulae(ctx, width, height) {
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.filter = 'blur(60px)';
+
+    const nebulae = [
+        { x: width * 0.2, y: height * 0.3, r: Math.min(width, height) * 0.4, color: '#312e81' },
+        { x: width * 0.8, y: height * 0.6, r: Math.min(width, height) * 0.35, color: '#4c1d95' },
+        { x: width * 0.5, y: height * 0.8, r: Math.min(width, height) * 0.3, color: '#1e3a8a' },
+    ];
+
+    nebulae.forEach(n => {
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+        grad.addColorStop(0, n.color);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.filter = 'none';
+    ctx.globalAlpha = 1.0;
+    ctx.restore();
+}
 
 // --- MICRO-ATMOSPHERE LOGIC ---
 
@@ -206,12 +234,17 @@ function animate() {
         ctx.translate(-focusX, -focusY);
 
         if (viewState === 'ATMOSPHERE') {
-            ambientParticles.forEach(p => p.update(width, height));
+            legacyStars.forEach(s => s.update(width, height));
+            ambientDust.forEach(p => p.update(width, height));
             ideas.forEach(idea => idea.update(ideas, width, height));
+            transientFX.forEach(fx => fx.update(width, height));
         }
 
-        ambientParticles.forEach(p => p.draw(ctx));
-        ideas.forEach(idea => idea.draw(ctx, currentZoom, idea === focusedIdea)); 
+        drawNebulae(ctx, width, height);
+        legacyStars.forEach(s => s.draw(ctx));
+        ambientDust.forEach(p => p.draw(ctx));
+        ideas.forEach(idea => idea.draw(ctx, currentZoom, idea === focusedIdea));
+        transientFX.forEach(fx => fx.draw(ctx));
 
         ctx.restore();
 

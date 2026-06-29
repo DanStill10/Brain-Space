@@ -9,7 +9,7 @@ body, html {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: #020617; /* Deep space black */
+    background: radial-gradient(ellipse at bottom right, #090a15 0%, #030408 50%, #000000 100%);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 canvas {
