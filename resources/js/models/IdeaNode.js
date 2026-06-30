@@ -7,8 +7,8 @@ export const colorMap = {
 };
 export const colorKeys = Object.keys(colorMap);
 
-export function wrapText(context, text, maxWidth, maxLines) {
-    context.font = '500 14px system-ui';
+export function wrapText(context, text, maxWidth, maxLines, scale = 1) {
+    context.font = `500 ${Math.round(14 * scale)}px system-ui`;
     const words = text.split(' ');
     let lines = [];
     let currentLine = '';
@@ -37,16 +37,17 @@ export function wrapText(context, text, maxWidth, maxLines) {
 }
 
 export class IdeaNode {
-    constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt) {
+    constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt, scale = 1) {
         this.id = dbId; 
         this.text = text;
         this.x = x;
         this.y = y;
         this.priority = priority || 0;
         this.lastInteractedAt = lastInteractedAt ? new Date(lastInteractedAt) : new Date();
+        this.scale = scale;
         
         // Radius Animation Setup
-        this.baseRadius = Math.max(50, Math.min(95, text.length * 2.5)) + (this.priority * 4);
+        this.baseRadius = (Math.max(50, Math.min(95, text.length * 2.5)) + (this.priority * 4)) * scale;
         this.radius = 0; 
         this.targetRadius = this.baseRadius;
 
@@ -62,7 +63,7 @@ export class IdeaNode {
         this.colorEnd = colorSet[1];
         
         const maxTextWidth = this.baseRadius * 1.6; 
-        this.lines = wrapText(ctx, this.text, maxTextWidth, 3); 
+        this.lines = wrapText(ctx, this.text, maxTextWidth, 3, scale); 
 
         // Drag & Lava Setup
         this.isDragging = false;
@@ -90,7 +91,7 @@ export class IdeaNode {
             text: childNode.text,
             colorStart: cStart,
             colorEnd: cEnd,
-            radius: 18,
+            radius: 18 * this.scale,
             offsetX: (Math.random() - 0.5) * 20,
             offsetY: (Math.random() - 0.5) * 20,
             dx: (Math.random() - 0.5) * 1.5,
@@ -262,6 +263,7 @@ export class IdeaNode {
     draw(ctx, currentZoom = 1, isFocused = false) {
         if (this.radius < 1) return;
 
+        const s = this.scale;
         const isZooming = currentZoom > 1.001;
 
         // --- DRAW RETICLE (LOCK-ON) ---
@@ -269,34 +271,35 @@ export class IdeaNode {
             ctx.save();
             ctx.translate(this.x, this.y);
             
-            const reticleSize = this.radius + 15;
-            const bracketLen = 12;
+            const reticleSize = this.radius + (15 * s);
+            const bracketLen = 12 * s;
             const glowColor = this.colorStart;
 
             ctx.strokeStyle = glowColor;
-            ctx.lineWidth = 2;
-            ctx.shadowBlur = 15;
+            ctx.lineWidth = Math.max(1, 2 * s);
+            ctx.shadowBlur = 15 * s;
             ctx.shadowColor = glowColor;
 
             // Pulsing animation for reticle
-            const pulse = Math.sin(Date.now() * 0.01) * 3;
-            const s = reticleSize + pulse;
+            const pulse = Math.sin(Date.now() * 0.01) * (3 * s);
+            const r = reticleSize + pulse;
 
             // Draw 4 corners [ + ]
             for (let i = 0; i < 4; i++) {
                 ctx.rotate(Math.PI / 2);
                 ctx.beginPath();
-                ctx.moveTo(s - bracketLen, s);
-                ctx.lineTo(s, s);
-                ctx.lineTo(s, s - bracketLen);
+                ctx.moveTo(r - bracketLen, r);
+                ctx.lineTo(r, r);
+                ctx.lineTo(r, r - bracketLen);
                 ctx.stroke();
             }
 
             // Crosshair center (very faint)
             ctx.globalAlpha = 0.3;
+            const ch = 5 * s;
             ctx.beginPath();
-            ctx.moveTo(-5, 0); ctx.lineTo(5, 0);
-            ctx.moveTo(0, -5); ctx.lineTo(0, 5);
+            ctx.moveTo(-ch, 0); ctx.lineTo(ch, 0);
+            ctx.moveTo(0, -ch); ctx.lineTo(0, ch);
             ctx.stroke();
 
             ctx.restore();
@@ -308,7 +311,7 @@ export class IdeaNode {
             ctx.save();
             ctx.translate(this.x, this.y);
             
-            const gravityRadius = 450;
+            const gravityRadius = 450 * s;
             const bloomAlpha = (0.02 + (this.children.length * 0.005)) * (isZooming ? 0.3 : 1);
             const grad = ctx.createRadialGradient(0, 0, this.radius, 0, 0, gravityRadius);
             grad.addColorStop(0, `${this.colorStart}${Math.floor(bloomAlpha * 255).toString(16).padStart(2, '0')}`);
@@ -320,7 +323,7 @@ export class IdeaNode {
 
             const numRings = Math.min(4, Math.ceil(this.children.length / 1.5));
             for (let i = 1; i <= numRings; i++) {
-                const ringRadius = this.radius + (i * 35) + (Math.sin(Date.now() * 0.001) * 2);
+                const ringRadius = this.radius + (i * 35 * s) + (Math.sin(Date.now() * 0.001) * 2 * s);
                 const rotationSpeed = this.vortexAngle * (i % 2 === 0 ? -1 : 1.2) * (0.8 / i);
                 
                 ctx.save();
@@ -331,11 +334,11 @@ export class IdeaNode {
                     const arcLen = (Math.PI / 4) + (this.children.length * 0.1);
                     ctx.arc(0, 0, ringRadius, 0, arcLen);
                     ctx.strokeStyle = this.colorStart;
-                    ctx.lineWidth = 1 + (i * 0.5);
+                    ctx.lineWidth = Math.max(1, s);
                     ctx.lineCap = 'round';
                     ctx.globalAlpha = (0.1 + (this.children.length * 0.02)) / i;
-                    if (!isZooming) { // Only glow when static
-                        ctx.shadowBlur = 10;
+                    if (!isZooming) {
+                        ctx.shadowBlur = 10 * s;
                         ctx.shadowColor = this.colorStart;
                     }
                     ctx.stroke();
@@ -362,7 +365,7 @@ export class IdeaNode {
         // PERFORMANCE BOOST: Disable shadowBlur during zoom
         if (!isZooming) {
             ctx.shadowColor = drawColorStart;
-            ctx.shadowBlur = this.isDecayed ? 5 : (this.isWaning ? 10 : 20);
+            ctx.shadowBlur = this.isDecayed ? 5 * s : (this.isWaning ? 10 * s : 20 * s);
         } else {
             ctx.shadowBlur = 0;
         }
@@ -426,20 +429,20 @@ export class IdeaNode {
         ctx.shadowBlur = 0;
         ctx.globalAlpha = alpha;
 
-        if (this.radius > 20 && surfaceAlpha > 0) {
+        if (this.radius > 20 * s && surfaceAlpha > 0) {
             if (isFocused) {
                 // Draw Leader Line to the left panel
                 ctx.save();
                 ctx.beginPath();
-                ctx.moveTo(this.x - this.radius - 10, this.y);
+                ctx.moveTo(this.x - this.radius - (10 * s), this.y);
                 
                 // Mission Report is roughly at x=320 (80w + 8p)
                 const targetX = 320; 
                 const targetY = window.innerHeight / 2;
 
-                ctx.setLineDash([5, 5]);
+                ctx.setLineDash([5 * s, 5 * s]);
                 ctx.strokeStyle = this.colorStart;
-                ctx.lineWidth = 1;
+                ctx.lineWidth = Math.max(1, 1 * s);
                 ctx.globalAlpha = 0.4;
 
                 // Simple elbow joint for the leader line
@@ -453,7 +456,7 @@ export class IdeaNode {
             }
 
             if (this.priority > 0) {
-                const badgeRadius = 10;
+                const badgeRadius = 10 * s;
                 const angle = -Math.PI / 4; 
                 const badgeX = this.x + Math.cos(angle) * this.radius;
                 const badgeY = this.y + Math.sin(angle) * this.radius;
@@ -462,10 +465,12 @@ export class IdeaNode {
                 ctx.fillStyle = '#1e293b'; 
                 ctx.fill();
                 ctx.strokeStyle = drawColorStart;
-                ctx.lineWidth = 2;
+                ctx.lineWidth = Math.max(1, 2 * s);
                 ctx.stroke();
                 ctx.fillStyle = 'white';
-                ctx.font = 'bold 11px system-ui';
+                ctx.font = `bold ${Math.round(11 * s)}px system-ui`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
                 ctx.fillText(this.priority.toString(), badgeX, badgeY);
             }
         }

@@ -35,6 +35,7 @@ const reportStatus = document.getElementById('report-status');
 const reportChildren = document.getElementById('report-children');
 
 let width, height;
+let deviceScale = 1;
 let ideas = [];
 let completedIdeas = []; // For constellations
 let ambientDust = [];
@@ -90,6 +91,7 @@ function resize() {
     height = window.innerHeight;
     canvas.width = width;
     canvas.height = height;
+    deviceScale = Math.max(0.45, Math.min(1.0, Math.sqrt(width / 1440)));
 }
 window.addEventListener('resize', resize);
 resize();
@@ -182,7 +184,7 @@ function animate() {
                 const spawnX = (width/2) + (child.offsetX * targetZoom);
                 const spawnY = (height/2) + (child.offsetY * targetZoom);
                 
-                const newChild = new IdeaNode(child.id, child.text, spawnX, spawnY, null, 0, ctx); 
+                const newChild = new IdeaNode(child.id, child.text, spawnX, spawnY, null, 0, ctx, null, deviceScale); 
                 newChild.colorStart = child.colorStart;
                 newChild.colorEnd = child.colorEnd;
                 newChild.radius = child.radius * targetZoom;
@@ -495,7 +497,8 @@ async function loadIdeas() {
                 item.color, 
                 item.priority, 
                 ctx, 
-                item.last_interacted_at
+                item.last_interacted_at,
+                deviceScale
             );
             if (item.children && item.children.length > 0) {
                 item.children.forEach(child => newParent.absorb(child));
@@ -542,13 +545,14 @@ form.addEventListener('submit', async (e) => {
                 savedItem.color, 
                 savedItem.priority, 
                 ctx, 
-                savedItem.last_interacted_at
+                savedItem.last_interacted_at,
+                deviceScale
             ));
             hideModal();
         } catch (error) {
             const spawnX = (Math.random() * 0.6 + 0.2) * width;
             const spawnY = (Math.random() * 0.6 + 0.2) * height;
-            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx));
+            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx, null, deviceScale));
             hideModal();
         } finally {
             submitBtn.innerText = "Add to Atmosphere";
