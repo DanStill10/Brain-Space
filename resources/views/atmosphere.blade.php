@@ -78,6 +78,16 @@
                             <option value="violet">Violet</option>
                             <option value="amber">Amber</option>
                             <option value="rose">Rose</option>
+                            <option value="indigo">Indigo</option>
+                            <option value="cyan">Cyan</option>
+                            <option value="teal">Teal</option>
+                            <option value="lime">Lime</option>
+                            <option value="yellow">Yellow</option>
+                            <option value="orange">Orange</option>
+                            <option value="red">Red</option>
+                            <option value="pink">Pink</option>
+                            <option value="gold">Gold</option>
+                            <option value="slate">Slate</option>
                         </select>
                     </div>
                     <div class="flex-1">

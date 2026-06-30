@@ -3,7 +3,17 @@ export const colorMap = {
     'emerald': ['#10b981', '#047857'],
     'violet': ['#8b5cf6', '#6d28d9'],
     'amber': ['#f59e0b', '#b45309'],
-    'rose': ['#f43f5e', '#be123c']
+    'rose': ['#f43f5e', '#be123c'],
+    'indigo': ['#6366f1', '#4338ca'],
+    'cyan': ['#06b6d4', '#0891b2'],
+    'teal': ['#14b8a6', '#0f766e'],
+    'lime': ['#84cc16', '#4d7c0f'],
+    'yellow': ['#eab308', '#a16207'],
+    'orange': ['#f97316', '#c2410c'],
+    'red': ['#ef4444', '#b91c1c'],
+    'pink': ['#ec4899', '#be185d'],
+    'gold': ['#facc15', '#b45309'],
+    'slate': ['#64748b', '#334155']
 };
 export const colorKeys = Object.keys(colorMap);
 
@@ -37,7 +47,7 @@ export function wrapText(context, text, maxWidth, maxLines, scale = 1) {
 }
 
 export class IdeaNode {
-    constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt, scale = 1) {
+    constructor(dbId, text, x, y, colorTheme, priority, ctx, lastInteractedAt, scale = 1, pattern = null) {
         this.id = dbId; 
         this.text = text;
         this.x = x;
@@ -61,6 +71,11 @@ export class IdeaNode {
         const colorSet = colorMap[selectedTheme];
         this.colorStart = colorSet[0];
         this.colorEnd = colorSet[1];
+        
+        let resolvedPattern = pattern || 'solid';
+        if (resolvedPattern === 'stripes') resolvedPattern = 'pattern1';
+        if (resolvedPattern === 'rings') resolvedPattern = 'pattern2';
+        this.pattern = resolvedPattern;
         
         const maxTextWidth = this.baseRadius * 1.6; 
         this.lines = wrapText(ctx, this.text, maxTextWidth, 3, scale); 
@@ -370,22 +385,22 @@ export class IdeaNode {
             ctx.shadowBlur = 0;
         }
 
-        const gradient = ctx.createLinearGradient(
-            this.x - this.radius, this.y - this.radius, 
-            this.x + this.radius, this.y + this.radius
-        );
-        gradient.addColorStop(0, drawColorStart);
-        gradient.addColorStop(1, drawColorEnd);
-
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-
         let surfaceAlpha = 1.0;
         if (currentZoom > 1.5) {
             surfaceAlpha = Math.max(0, 1.0 - ((currentZoom - 1.5) * 0.5));
         }
 
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+
         if (this.children.length > 0) {
+            const gradient = ctx.createLinearGradient(
+                this.x - this.radius, this.y - this.radius, 
+                this.x + this.radius, this.y + this.radius
+            );
+            gradient.addColorStop(0, drawColorStart);
+            gradient.addColorStop(1, drawColorEnd);
+
             ctx.globalAlpha = 0.2 * alpha;
             ctx.fillStyle = gradient;
             ctx.fill();
@@ -407,7 +422,6 @@ export class IdeaNode {
                 ctx.beginPath();
                 ctx.arc(this.x + child.offsetX, this.y + child.offsetY, child.radius, 0, Math.PI * 2);
                 
-                // PERFORMANCE BOOST: Solid colors instead of radial gradients during zoom
                 if (isZooming) {
                     ctx.fillStyle = childColorStart;
                 } else {
@@ -422,8 +436,364 @@ export class IdeaNode {
                 ctx.fill();
             });
         } else {
-            ctx.fillStyle = gradient;
-            ctx.fill();
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.clip();
+
+            // Helper function to draw a 3D sphere gradient base
+            const drawSphereBase = (cStart, cEnd) => {
+                const grad = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.1,
+                    this.x, this.y, this.radius
+                );
+                grad.addColorStop(0, cStart);
+                grad.addColorStop(0.85, cEnd);
+                grad.addColorStop(1, cEnd);
+                ctx.fillStyle = grad;
+                ctx.fillRect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+            };
+
+            if (this.pattern === 'pattern1') {
+                if (this.colorTheme === 'blue') {
+                    // Blue Gas Giant with bands and dark storm spot
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius * 0.4, this.radius * 2, this.radius * 0.25);
+                    ctx.fillStyle = 'rgba(29, 78, 216, 0.4)';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius * 0.1, this.radius * 2, this.radius * 0.2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fillRect(this.x - this.radius, this.y + this.radius * 0.2, this.radius * 2, this.radius * 0.15);
+                    
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.radius * 0.3, this.y + this.radius * 0.1, this.radius * 0.2, this.radius * 0.12, Math.PI / 12, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.fill();
+                    ctx.strokeStyle = '#60a5fa';
+                    ctx.lineWidth = Math.max(1, this.radius * 0.02);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'emerald') {
+                    // Emerald Earth-like planet with green continents on blue/emerald ocean
+                    drawSphereBase('#34d399', '#065f46');
+                    ctx.fillStyle = '#059669';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.2, this.radius * 0.4, 0, Math.PI * 2);
+                    ctx.arc(this.x - this.radius * 0.1, this.y - this.radius * 0.4, this.radius * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.radius * 0.4, this.y + this.radius * 0.3, this.radius * 0.35, 0, Math.PI * 2);
+                    ctx.arc(this.x + this.radius * 0.2, this.y + this.radius * 0.5, this.radius * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'violet') {
+                    // Violet Nebula cloud swirl
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(232, 121, 249, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.2, this.y + this.radius * 0.1, this.radius * 0.55, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(139, 92, 246, 0.4)';
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.radius * 0.3, this.y - this.radius * 0.2, this.radius * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'amber') {
+                    // Amber Volcanic with lava fractures
+                    drawSphereBase('#78350f', '#451a03');
+                    ctx.strokeStyle = '#f97316';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y - this.radius * 0.3);
+                    ctx.lineTo(this.x - this.radius * 0.2, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.1, this.y + this.radius * 0.4);
+                    ctx.lineTo(this.x + this.radius, this.y + this.radius * 0.2);
+                    ctx.moveTo(this.x - this.radius * 0.2, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.3, this.y - this.radius * 0.5);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'rose') {
+                    // Crimson magma storm swirls
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(251, 113, 133, 0.4)';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.1, this.y - this.radius * 0.1, this.radius * 0.45, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(253, 244, 245, 0.2)';
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.radius * 0.4, this.y + this.radius * 0.2, this.radius * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'indigo') {
+                    // Indigo Nebula with stars
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(165, 180, 252, 0.2)';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.2, this.y + this.radius * 0.1, this.radius * 0.6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    for (let i = 0; i < 6; i++) {
+                        ctx.fillRect(this.x + Math.sin(i) * this.radius * 0.5, this.y + Math.cos(i * 1.5) * this.radius * 0.5, 1.5, 1.5);
+                    }
+                } else if (this.colorTheme === 'cyan') {
+                    // Cyan tropical ocean currents
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(165, 243, 252, 0.35)';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x - this.radius * 0.2, this.y - this.radius * 0.2, this.radius * 0.7, this.radius * 0.3, Math.PI/4, 0, Math.PI * 2);
+                    ctx.ellipse(this.x + this.radius * 0.3, this.y + this.radius * 0.3, this.radius * 0.5, this.radius * 0.25, Math.PI/4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'teal') {
+                    // Teal algal currents
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.strokeStyle = 'rgba(45, 212, 191, 0.4)';
+                    ctx.lineWidth = Math.max(3, this.radius * 0.08);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.3, this.y, this.radius * 0.6, -Math.PI / 2, Math.PI / 2);
+                    ctx.arc(this.x + this.radius * 0.3, this.y, this.radius * 0.5, Math.PI / 2, -Math.PI / 2);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'lime') {
+                    // Lime radioactive vapor clouds
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(253, 224, 71, 0.25)';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius * 0.3, this.radius * 2, this.radius * 0.45);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                    ctx.fillRect(this.x - this.radius, this.y + this.radius * 0.2, this.radius * 2, this.radius * 0.15);
+                } else if (this.colorTheme === 'yellow') {
+                    // Yellow solar flare loops
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.strokeStyle = '#f97316';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.04);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.4, this.y, this.radius * 0.3, 0, Math.PI, true);
+                    ctx.arc(this.x + this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.25, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'orange') {
+                    // Orange giant atmospheric bands
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x, this.y - this.radius * 0.35, this.radius * 0.9, this.radius * 0.15, 0, 0, Math.PI * 2);
+                    ctx.ellipse(this.x - this.radius * 0.1, this.y + this.radius * 0.25, this.radius * 0.8, this.radius * 0.12, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'red') {
+                    // Red Superstorm band
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(254, 226, 226, 0.2)';
+                    ctx.fillRect(this.x - this.radius, this.y - this.radius * 0.4, this.radius * 2, this.radius * 0.2);
+                    ctx.fillRect(this.x - this.radius, this.y + this.radius * 0.1, this.radius * 2, this.radius * 0.18);
+                    ctx.fillStyle = '#7f1d1d';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.radius * 0.3, this.y - this.radius * 0.1, this.radius * 0.25, this.radius * 0.15, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'pink') {
+                    // Cotton candy pink/cyan swirls
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(165, 243, 252, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.2, this.y - this.radius * 0.2, this.radius * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(244, 63, 94, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.radius * 0.3, this.y + this.radius * 0.3, this.radius * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'gold') {
+                    // Golden wind sand sweeps
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.strokeStyle = 'rgba(254, 240, 138, 0.5)';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 1.0, this.y - this.radius * 0.2, this.radius * 1.3, -Math.PI/6, Math.PI/3);
+                    ctx.stroke();
+                } else { // slate
+                    // Slate cratered surface
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                    ctx.lineWidth = 1;
+                    const craters = [
+                        {cx: -0.3, cy: -0.3, r: 0.2},
+                        {cx: 0.4, cy: 0.1, r: 0.15},
+                        {cx: -0.1, cy: 0.4, r: 0.25}
+                    ];
+                    craters.forEach(c => {
+                        ctx.beginPath();
+                        ctx.arc(this.x + this.radius * c.cx, this.y + this.radius * c.cy, this.radius * c.r, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    });
+                }
+            } else if (this.pattern === 'pattern2') {
+                if (this.colorTheme === 'blue') {
+                    // Blue Icy/Cracked frost planet
+                    drawSphereBase('#93c5fd', '#1e40af');
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.lineWidth = Math.max(1, this.radius * 0.03);
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y - this.radius * 0.2);
+                    ctx.lineTo(this.x - this.radius * 0.3, this.y + this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.2, this.y - this.radius * 0.4);
+                    ctx.lineTo(this.x + this.radius * 0.8, this.y - this.radius * 0.1);
+                    ctx.moveTo(this.x - this.radius * 0.5, this.y + this.radius * 0.5);
+                    ctx.lineTo(this.x + this.radius * 0.1, this.y + this.radius * 0.2);
+                    ctx.lineTo(this.x + this.radius * 0.4, this.y + this.radius * 0.7);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'emerald') {
+                    // Emerald Crystal/Mineral with vein clusters
+                    drawSphereBase('#6ee7b7', '#047857');
+                    ctx.strokeStyle = '#a7f3d0';
+                    ctx.lineWidth = Math.max(1.5, this.radius * 0.04);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y + this.radius * 0.5);
+                    ctx.lineTo(this.x - this.radius * 0.2, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.3, this.y + this.radius * 0.4);
+                    ctx.lineTo(this.x + this.radius, this.y - this.radius * 0.2);
+                    ctx.moveTo(this.x - this.radius * 0.2, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.1, this.y - this.radius * 0.6);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'violet') {
+                    // Violet Acid Flows
+                    drawSphereBase('#8b5cf6', '#4c1d95');
+                    ctx.fillStyle = '#a3e635';
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    ctx.ellipse(this.x - this.radius * 0.4, this.y - this.radius * 0.3, this.radius * 0.25, this.radius * 0.12, Math.PI/6, 0, Math.PI*2);
+                    ctx.ellipse(this.x + this.radius * 0.2, this.y + this.radius * 0.4, this.radius * 0.3, this.radius * 0.15, -Math.PI/4, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                } else if (this.colorTheme === 'amber') {
+                    // Amber Desert dunes
+                    drawSphereBase('#f59e0b', '#78350f');
+                    ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+                    ctx.lineWidth = Math.max(1.5, this.radius * 0.04);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 1.2, this.y + this.radius * 0.2, this.radius * 1.5, -Math.PI / 4, Math.PI / 4);
+                    ctx.arc(this.x - this.radius * 0.5, this.y + this.radius * 0.8, this.radius * 1.2, -Math.PI / 4, Math.PI / 4);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'rose') {
+                    // Rose atmospheric haze layers
+                    drawSphereBase('#fda4af', '#9f1239');
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x, this.y - this.radius * 0.3, this.radius * 0.9, this.radius * 0.15, 0, 0, Math.PI * 2);
+                    ctx.ellipse(this.x - this.radius * 0.2, this.y + this.radius * 0.2, this.radius * 0.8, this.radius * 0.18, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.colorTheme === 'indigo') {
+                    // Indigo Dark Matter fracture network
+                    drawSphereBase('#312e81', '#1e1b4b');
+                    ctx.strokeStyle = '#a5b4fc';
+                    ctx.lineWidth = Math.max(1, this.radius * 0.03);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x - this.radius * 0.2, this.y + this.radius * 0.3);
+                    ctx.lineTo(this.x + this.radius * 0.3, this.y - this.radius * 0.4);
+                    ctx.lineTo(this.x + this.radius, this.y + this.radius * 0.2);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'cyan') {
+                    // Cyan glacial ice geometry
+                    drawSphereBase('#cffafe', '#0e7490');
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = Math.max(1.5, this.radius * 0.04);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius * 0.7, this.y - this.radius * 0.7);
+                    ctx.lineTo(this.x, this.y);
+                    ctx.lineTo(this.x + this.radius * 0.7, this.y - this.radius * 0.7);
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x, this.y + this.radius * 0.8);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'teal') {
+                    // Teal bioluminescent clusters
+                    drawSphereBase('#0d9488', '#115e59');
+                    ctx.fillStyle = '#2dd4bf';
+                    ctx.shadowColor = '#2dd4bf';
+                    ctx.shadowBlur = 8;
+                    const spots = [
+                        {cx: -0.4, cy: 0.2, r: 0.08},
+                        {cx: 0.1, cy: -0.4, r: 0.12},
+                        {cx: 0.3, cy: 0.3, r: 0.06},
+                        {cx: -0.1, cy: -0.1, r: 0.1}
+                    ];
+                    spots.forEach(s => {
+                        ctx.beginPath();
+                        ctx.arc(this.x + this.radius * s.cx, this.y + this.radius * s.cy, this.radius * s.r, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                    ctx.shadowBlur = 0;
+                } else if (this.colorTheme === 'lime') {
+                    // Lime acid geysers/vents
+                    drawSphereBase('#4d7c0f', '#1a2e05');
+                    ctx.strokeStyle = '#bef264';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.2, this.radius * 0.18, 0, Math.PI * 2);
+                    ctx.arc(this.x + this.radius * 0.4, this.y + this.radius * 0.3, this.radius * 0.12, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'yellow') {
+                    // Yellow sand dunes
+                    drawSphereBase('#fef08a', '#854d0e');
+                    ctx.strokeStyle = 'rgba(253, 224, 71, 0.6)';
+                    ctx.lineWidth = Math.max(1.5, this.radius * 0.04);
+                    ctx.beginPath();
+                    ctx.arc(this.x - this.radius * 1.3, this.y - this.radius * 0.4, this.radius * 1.5, -Math.PI / 6, Math.PI / 4);
+                    ctx.arc(this.x - this.radius * 0.8, this.y + this.radius * 0.3, this.radius * 1.2, -Math.PI / 6, Math.PI / 4);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'orange') {
+                    // Orange magma channels
+                    drawSphereBase('#c2410c', '#431407');
+                    ctx.strokeStyle = '#fdba74';
+                    ctx.shadowColor = '#ea580c';
+                    ctx.shadowBlur = 10;
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y + this.radius * 0.4);
+                    ctx.lineTo(this.x - this.radius * 0.1, this.y - this.radius * 0.1);
+                    ctx.lineTo(this.x + this.radius * 0.3, this.y + this.radius * 0.3);
+                    ctx.lineTo(this.x + this.radius, this.y - this.radius * 0.3);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                } else if (this.colorTheme === 'red') {
+                    // Red deep tectonic rifts
+                    drawSphereBase('#991b1b', '#450a0a');
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = Math.max(3, this.radius * 0.06);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y - this.radius * 0.2);
+                    ctx.lineTo(this.x, this.y);
+                    ctx.lineTo(this.x + this.radius * 0.2, this.y + this.radius * 0.5);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'pink') {
+                    // Pink auroral rings
+                    drawSphereBase('#fbcfe8', '#831843');
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius * 0.7, 0.2, Math.PI - 0.2);
+                    ctx.stroke();
+                } else if (this.colorTheme === 'gold') {
+                    // Golden solar flares crown rays
+                    drawSphereBase(drawColorStart, drawColorEnd);
+                    ctx.strokeStyle = '#ca8a04';
+                    ctx.lineWidth = Math.max(1, this.radius * 0.03);
+                    ctx.beginPath();
+                    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+                        ctx.moveTo(this.x + Math.cos(angle) * this.radius * 0.4, this.y + Math.sin(angle) * this.radius * 0.4);
+                        ctx.lineTo(this.x + Math.cos(angle) * this.radius * 0.85, this.y + Math.sin(angle) * this.radius * 0.85);
+                    }
+                    ctx.stroke();
+                } else { // slate
+                    // Slate cold metallic ridges
+                    drawSphereBase('#64748b', '#1e293b');
+                    ctx.strokeStyle = '#94a3b8';
+                    ctx.lineWidth = Math.max(2, this.radius * 0.05);
+                    ctx.beginPath();
+                    ctx.moveTo(this.x - this.radius, this.y - this.radius * 0.5);
+                    ctx.lineTo(this.x + this.radius, this.y + this.radius * 0.5);
+                    ctx.moveTo(this.x - this.radius, this.y + this.radius * 0.5);
+                    ctx.lineTo(this.x + this.radius, this.y - this.radius * 0.5);
+                    ctx.stroke();
+                }
+            } else {
+                // Default clean 3D Solid sphere shading
+                drawSphereBase(drawColorStart, drawColorEnd);
+            }
+
+            ctx.restore();
         }
 
         ctx.shadowBlur = 0;

@@ -1,5 +1,5 @@
 import { Particle } from './models/particle.js';
-import { IdeaNode } from './models/IdeaNode.js';
+import { IdeaNode, colorKeys } from './models/IdeaNode.js';
 
 // --- Global State & DOM Elements ---
 const canvas = document.getElementById('atmosphere');
@@ -498,7 +498,8 @@ async function loadIdeas() {
                 item.priority, 
                 ctx, 
                 item.last_interacted_at,
-                deviceScale
+                deviceScale,
+                item.pattern
             );
             if (item.children && item.children.length > 0) {
                 item.children.forEach(child => newParent.absorb(child));
@@ -516,8 +517,13 @@ async function loadIdeas() {
 form.addEventListener('submit', async (e) => {
     e.preventDefault(); 
     const text = input.value.trim();
-    const color = colorInput.value;
+    let color = colorInput.value;
+    if (!color) {
+        color = colorKeys[Math.floor(Math.random() * colorKeys.length)];
+    }
     const priority = parseInt(priorityInput.value) || 0;
+    const patterns = ['solid', 'pattern1', 'pattern2'];
+    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
     const submitBtn = document.getElementById('submit-btn');
     
     if (text) {
@@ -528,7 +534,7 @@ form.addEventListener('submit', async (e) => {
             const response = await fetch('/api/ideas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrfToken() },
-                body: JSON.stringify({ text, color, priority })
+                body: JSON.stringify({ text, color, pattern, priority })
             });
 
             if (!response.ok) throw new Error("Failed");
@@ -546,13 +552,14 @@ form.addEventListener('submit', async (e) => {
                 savedItem.priority, 
                 ctx, 
                 savedItem.last_interacted_at,
-                deviceScale
+                deviceScale,
+                savedItem.pattern
             ));
             hideModal();
         } catch (error) {
             const spawnX = (Math.random() * 0.6 + 0.2) * width;
             const spawnY = (Math.random() * 0.6 + 0.2) * height;
-            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx, null, deviceScale));
+            ideas.push(new IdeaNode(`temp-${Date.now()}`, text, spawnX, spawnY, color, priority, ctx, null, deviceScale, pattern));
             hideModal();
         } finally {
             submitBtn.innerText = "Add to Atmosphere";
