@@ -43,6 +43,8 @@ let legacyStars = []; // For future completed goals (Constellations)
 let transientFX = []; // For future Supernovas/Comets
 let draggedIdea = null; 
 let focusedIdea = null;
+let touchStartIdea = null;
+let touchStartPos = null;
 
 // --- STATE MACHINE & CINEMATIC CAMERA ---
 let viewState = 'ATMOSPHERE'; // ATMOSPHERE, TRANSITION_IN, INSIDE, TRANSITION_OUT
@@ -306,10 +308,15 @@ async function handleStart(e) {
     }
 
     const pos = getPointerPos(e);
+    const isTouch = e.type === 'touchstart';
     const currentTime = new Date().getTime();
     const tapLength = currentTime - lastTapTime;
     const isDoubleTap = tapLength < 300 && tapLength > 0;
     lastTapTime = currentTime;
+
+    if (isTouch) {
+        touchStartPos = pos;
+    }
 
     const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
     let found = false;
@@ -320,21 +327,24 @@ async function handleStart(e) {
         
         if (dist < idea.radius) {
             found = true;
-            focusedIdea = idea;
-            updateMissionReport(idea);
 
-            // THE RESCUE: If decayed or waning, restore it!
-            if (idea.isDecayed || idea.isWaning) {
-                idea.lastInteractedAt = new Date();
-                idea.isDecayed = false;
-                idea.isWaning = false;
-                
-                try {
-                    fetch(`/api/ideas/${idea.id}/rescue`, {
-                        method: 'PUT',
-                        headers: { 'X-CSRF-TOKEN': getCsrfToken() }
-                    });
-                } catch (err) { console.error("Rescue failed", err); }
+            // On touch, defer focus & rescue to tap detection in handleEnd
+            if (isTouch) {
+                touchStartIdea = idea;
+            } else {
+                // Mouse: rescue on click, focus via hover
+                if (idea.isDecayed || idea.isWaning) {
+                    idea.lastInteractedAt = new Date();
+                    idea.isDecayed = false;
+                    idea.isWaning = false;
+                    
+                    try {
+                        fetch(`/api/ideas/${idea.id}/rescue`, {
+                            method: 'PUT',
+                            headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+                        });
+                    } catch (err) { console.error("Rescue failed", err); }
+                }
             }
 
             if (isDoubleTap && viewState === 'ATMOSPHERE' && idea.children && idea.children.length > 0) {
@@ -352,6 +362,7 @@ async function handleStart(e) {
     if (!found) {
         focusedIdea = null;
         updateMissionReport(null);
+        touchStartIdea = null;
     }
 }
 
@@ -372,7 +383,7 @@ function handleMove(e) {
         }
     } else {
         // Hover detection for focusedIdea (mouse only)
-        if (e.type === 'mousemove' && !modal.classList.contains('hidden-animate')) {
+        if (e.type === 'mousemove' && modal.classList.contains('hidden-animate')) {
             const pos = getPointerPos(e);
             const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
             let found = false;
@@ -387,8 +398,10 @@ function handleMove(e) {
                     break;
                 }
             }
-            // Optional: don't clear on hover-off to keep the report sticky? 
-            // Let's keep it sticky for now.
+            if (!found) {
+                focusedIdea = null;
+                updateMissionReport(null);
+            }
         }
     }
 }
@@ -397,6 +410,33 @@ async function handleEnd(e) {
     if (draggedIdea) {
         draggedIdea.isDragging = false;
         const pos = getPointerPos(e);
+        const isTouch = e.type === 'touchend';
+
+        // --- TAP DETECTION (touch only) ---
+        if (isTouch && touchStartIdea) {
+            const dragDist = touchStartPos ? Math.hypot(pos.x - touchStartPos.x, pos.y - touchStartPos.y) : 999;
+            if (dragDist < 10) {
+                focusedIdea = touchStartIdea;
+                updateMissionReport(touchStartIdea);
+
+                if (touchStartIdea.isDecayed || touchStartIdea.isWaning) {
+                    touchStartIdea.lastInteractedAt = new Date();
+                    touchStartIdea.isDecayed = false;
+                    touchStartIdea.isWaning = false;
+                    try {
+                        fetch(`/api/ideas/${touchStartIdea.id}/rescue`, {
+                            method: 'PUT',
+                            headers: { 'X-CSRF-TOKEN': getCsrfToken() }
+                        });
+                    } catch (err) { console.error("Rescue failed", err); }
+                }
+
+                draggedIdea = null;
+                touchStartIdea = null;
+                blackHole.classList.remove('active');
+                return;
+            }
+        }
 
         // 1. VOID DELETION
         if (viewState === 'ATMOSPHERE') {
@@ -417,6 +457,7 @@ async function handleEnd(e) {
                 } catch (err) { console.error("Failed to delete idea", err); }
                 
                 draggedIdea = null;
+                touchStartIdea = null;
                 return;
             }
         }
@@ -456,6 +497,8 @@ async function handleEnd(e) {
         draggedIdea = null;
         blackHole.classList.remove('active');
     }
+
+    touchStartIdea = null;
 }
 
 canvas.addEventListener('mousedown', handleStart);
