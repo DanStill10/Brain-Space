@@ -198,6 +198,10 @@ async function loadIdeaDetails(ideaId) {
     }
 }
 
+function mediaUrl(url) {
+    return url && !url.startsWith('http') ? '/storage/' + url : url;
+}
+
 function renderUpdates(updates) {
     if (!updates || updates.length === 0) {
         reportUpdates.innerHTML = '<div class="text-center text-xs text-slate-500 py-4">No updates yet.</div>';
@@ -206,10 +210,11 @@ function renderUpdates(updates) {
     reportUpdates.innerHTML = updates.map(update => {
         let mediaHtml = '';
         if (update.media_url) {
+            const src = mediaUrl(update.media_url);
             if (update.media_type && update.media_type.startsWith('video/')) {
-                mediaHtml = `<video src="${escapeHtml(update.media_url)}" class="update-media" controls></video>`;
+                mediaHtml = `<video src="${escapeHtml(src)}" class="update-media" controls></video>`;
             } else {
-                mediaHtml = `<img src="${escapeHtml(update.media_url)}" class="update-media" loading="lazy">`;
+                mediaHtml = `<img src="${escapeHtml(src)}" class="update-media" loading="lazy">`;
             }
         }
         const contentHtml = update.content ? `<div class="update-content">${escapeHtml(update.content)}</div>` : '';

@@ -117,7 +117,7 @@ class IdeaController extends Controller
 
         if ($request->hasFile('media')) {
             $path = $request->file('media')->store('idea-media', 'public');
-            $updateData['media_url'] = Storage::disk('public')->url($path);
+            $updateData['media_url'] = $path;
             $updateData['media_type'] = $request->file('media')->getMimeType();
         }
 
@@ -135,8 +135,7 @@ class IdeaController extends Controller
         }
 
         if ($update->media_url && !str_starts_with($update->media_url, 'http')) {
-            $relativePath = str_replace('/storage/', '', $update->media_url);
-            Storage::disk('public')->delete($relativePath);
+            Storage::disk('public')->delete($update->media_url);
         }
 
         $update->delete();
@@ -146,6 +145,14 @@ class IdeaController extends Controller
 
     public function destroy(Idea $idea)
     {
+        $idea->load('updates');
+
+        foreach ($idea->updates as $update) {
+            if ($update->media_url && !str_starts_with($update->media_url, 'http')) {
+                Storage::disk('public')->delete($update->media_url);
+            }
+        }
+
         $idea->delete();
 
         return response()->json(['success' => true]);
