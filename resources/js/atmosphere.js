@@ -1,5 +1,5 @@
 import { Particle } from './models/particle.js';
-import { IdeaNode, colorKeys } from './models/IdeaNode.js';
+import { IdeaNode, colorKeys, colorMap } from './models/IdeaNode.js';
 
 // --- Global State & DOM Elements ---
 const canvas = document.getElementById('atmosphere');
@@ -33,6 +33,17 @@ const reportTitle = document.getElementById('report-title');
 const reportPriority = document.getElementById('report-priority');
 const reportStatus = document.getElementById('report-status');
 const reportChildren = document.getElementById('report-children');
+const reportUpdates = document.getElementById('report-updates');
+const addUpdateBtn = document.getElementById('add-update-btn');
+
+// Update Modal Elements
+const updateModal = document.getElementById('update-modal');
+const updateContent = document.getElementById('update-content');
+const updateMedia = document.getElementById('update-media');
+const attachBtn = document.getElementById('attach-btn');
+const attachFilename = document.getElementById('attach-filename');
+const submitUpdateBtn = document.getElementById('submit-update');
+const cancelUpdateBtn = document.getElementById('cancel-update');
 
 let width, height;
 let deviceScale = 1;
@@ -57,25 +68,104 @@ let targetZoom = 1;
 
 const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function timeAgo(dateStr) {
+    const now = Date.now();
+    const date = new Date(dateStr).getTime();
+    const diffSecs = Math.floor((now - date) / 1000);
+    if (diffSecs < 60) return 'just now';
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+}
+
+function openLightbox(src) {
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    overlay.innerHTML = `<img src="${escapeHtml(src)}" alt="">`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+    overlay.addEventListener('click', () => {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 300);
+    });
+}
+
+function scrambleText(element, targetText, duration = 450) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&?@$*+=';
+    const start = performance.now();
+    
+    if (element._scrambleFrame) {
+        cancelAnimationFrame(element._scrambleFrame);
+    }
+
+    function update(time) {
+        const elapsed = time - start;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        let result = '';
+        for (let i = 0; i < targetText.length; i++) {
+            if (targetText[i] === ' ') {
+                result += ' ';
+                continue;
+            }
+            const threshold = i / targetText.length;
+            if (progress >= threshold) {
+                result += targetText[i];
+            } else {
+                result += chars[Math.floor(Math.random() * chars.length)];
+            }
+        }
+        element.innerText = result;
+        
+        if (progress < 1) {
+            element._scrambleFrame = requestAnimationFrame(update);
+        } else {
+            element.innerText = targetText;
+            delete element._scrambleFrame;
+        }
+    }
+    element._scrambleFrame = requestAnimationFrame(update);
+}
+
 function updateMissionReport(idea) {
     if (!idea) {
         missionReport.classList.add('opacity-0', 'translate-x-[-20px]');
-        missionReport.classList.remove('opacity-100', 'translate-x-0');
+        missionReport.classList.remove('opacity-100', 'translate-x-0', 'active');
+        missionReport.classList.add('pointer-events-none');
+        reportUpdates.innerHTML = '<div class="text-center text-xs text-slate-500 py-4">No updates yet.</div>';
         return;
     }
 
-    reportTitle.innerText = idea.text;
+    // Update theme color variables
+    const themeColors = colorMap[idea.colorTheme] || ['#3b82f6', '#1d4ed8'];
+    const mainColor = themeColors[0];
+    missionReport.style.setProperty('--theme-color-glow', mainColor);
+    missionReport.style.setProperty('--theme-color-glow-15', `${mainColor}26`);
+    missionReport.style.setProperty('--theme-color-glow-08', `${mainColor}14`);
+    missionReport.style.setProperty('--theme-color-glow-05', `${mainColor}0d`);
+
+    scrambleText(reportTitle, idea.text);
     reportPriority.innerText = idea.priority.toFixed(1);
     
     if (idea.isDecayed) {
         reportStatus.innerText = "DECAYED";
-        reportStatus.className = "text-xl font-mono text-rose-500 animate-pulse";
+        reportStatus.className = "text-lg font-mono text-rose-500 animate-pulse";
     } else if (idea.isWaning) {
         reportStatus.innerText = "WANING";
-        reportStatus.className = "text-xl font-mono text-amber-400";
+        reportStatus.className = "text-lg font-mono text-amber-400";
     } else {
         reportStatus.innerText = "STABLE";
-        reportStatus.className = "text-xl font-mono text-emerald-400";
+        reportStatus.className = "text-lg font-mono text-emerald-400";
     }
 
     if (idea.children && idea.children.length > 0) {
@@ -85,9 +175,121 @@ function updateMissionReport(idea) {
     }
 
     missionReport.classList.remove('opacity-0', 'translate-x-[-20px]');
-    missionReport.classList.add('opacity-100', 'translate-x-0');
+    missionReport.classList.add('opacity-100', 'translate-x-0', 'active');
+    missionReport.classList.remove('pointer-events-none');
+    missionReport.classList.add('pointer-events-auto');
+
+    missionReport.dataset.ideaId = idea.id;
+
+    loadIdeaDetails(idea.id);
 }
 
+async function loadIdeaDetails(ideaId) {
+    reportUpdates.innerHTML = '<div class="text-center text-xs text-slate-500 py-4">Loading updates...</div>';
+    try {
+        const response = await fetch(`/api/ideas/${ideaId}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) throw new Error('Failed');
+        const data = await response.json();
+        renderUpdates(data.updates || []);
+    } catch (err) {
+        reportUpdates.innerHTML = '<div class="text-center text-xs text-rose-400 py-4">Failed to load updates.</div>';
+    }
+}
+
+function renderUpdates(updates) {
+    if (!updates || updates.length === 0) {
+        reportUpdates.innerHTML = '<div class="text-center text-xs text-slate-500 py-4">No updates yet.</div>';
+        return;
+    }
+    reportUpdates.innerHTML = updates.map(update => {
+        let mediaHtml = '';
+        if (update.media_url) {
+            if (update.media_type && update.media_type.startsWith('video/')) {
+                mediaHtml = `<video src="${escapeHtml(update.media_url)}" class="update-media" controls></video>`;
+            } else {
+                mediaHtml = `<img src="${escapeHtml(update.media_url)}" class="update-media" loading="lazy">`;
+            }
+        }
+        const contentHtml = update.content ? `<div class="update-content">${escapeHtml(update.content)}</div>` : '';
+        return `<div class="update-entry">${contentHtml}${mediaHtml}<div class="update-timestamp">${timeAgo(update.created_at)}</div></div>`;
+    }).join('');
+
+    reportUpdates.querySelectorAll('.update-media').forEach(el => {
+        if (el.tagName === 'IMG') {
+            el.addEventListener('click', () => openLightbox(el.src));
+        }
+    });
+}
+
+// --- Update Modal ---
+let activeIdeaId = null;
+
+function showUpdateModal() {
+    activeIdeaId = missionReport.dataset.ideaId;
+    if (!activeIdeaId) return;
+    updateContent.value = '';
+    updateMedia.value = '';
+    attachFilename.textContent = '';
+    submitUpdateBtn.disabled = false;
+    submitUpdateBtn.textContent = 'Log Update';
+    updateModal.classList.remove('hidden-animate');
+}
+
+function hideUpdateModal() {
+    updateModal.classList.add('hidden-animate');
+}
+
+async function submitUpdate() {
+    const content = updateContent.value.trim();
+    const mediaFile = updateMedia.files[0];
+
+    if (!content && !mediaFile) return;
+
+    submitUpdateBtn.disabled = true;
+    submitUpdateBtn.textContent = 'Saving...';
+
+    try {
+        const formData = new FormData();
+        if (content) formData.append('content', content);
+        if (mediaFile) formData.append('media', mediaFile);
+
+        const response = await fetch(`/api/ideas/${activeIdeaId}/updates`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken()
+            },
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Failed to save update');
+
+        hideUpdateModal();
+        loadIdeaDetails(activeIdeaId);
+    } catch (err) {
+        submitUpdateBtn.disabled = false;
+        submitUpdateBtn.textContent = 'Log Update';
+        alert('Failed to save update. Please try again.');
+    }
+}
+
+addUpdateBtn.addEventListener('click', showUpdateModal);
+cancelUpdateBtn.addEventListener('click', hideUpdateModal);
+submitUpdateBtn.addEventListener('click', submitUpdate);
+
+attachBtn.addEventListener('click', () => updateMedia.click());
+
+updateMedia.addEventListener('change', () => {
+    if (updateMedia.files.length > 0) {
+        attachFilename.textContent = updateMedia.files[0].name;
+    } else {
+        attachFilename.textContent = '';
+    }
+});
+
+// --- VISUAL SETUP ---
 function resize() {
     width = window.innerWidth;
     height = window.innerHeight;
@@ -398,10 +600,6 @@ function handleMove(e) {
                     break;
                 }
             }
-            if (!found) {
-                focusedIdea = null;
-                updateMissionReport(null);
-            }
         }
     }
 }
@@ -656,8 +854,6 @@ authForm.addEventListener('submit', async (e) => {
             body: JSON.stringify(payload)
         });
         if (res.ok) {
-            // We must reload the page after login/register to grab the new CSRF token 
-            // generated by the session regeneration, otherwise POST requests will 419 fail.
             window.location.reload();
         } else {
             const data = await res.json();

@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Idea;
-use Illuminate\Support\Carbon;
+use App\Models\IdeaUpdate;
+use Illuminate\Support\Facades\Storage;
 
 class IdeaController extends Controller
 {
@@ -23,6 +24,19 @@ class IdeaController extends Controller
             'active' => $ideas,
             'completed' => $completed
         ]);
+    }
+
+    public function show(Idea $idea)
+    {
+        if ($idea->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $idea->load(['children' => function($query) {
+            $query->where('is_completed', false);
+        }, 'updates']);
+
+        return response()->json($idea);
     }
 
     public function complete(Idea $idea)
@@ -80,10 +94,58 @@ class IdeaController extends Controller
         return response()->json($idea);
     }
 
+    public function storeUpdate(Request $request, Idea $idea)
+    {
+        if ($idea->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'content' => 'nullable|string|max:10000',
+            'media' => 'nullable|file|image|max:10240',
+        ]);
+
+        if (!$request->filled('content') && !$request->hasFile('media')) {
+            return response()->json(['message' => 'Provide text or an image.'], 422);
+        }
+
+        $updateData = ['idea_id' => $idea->id];
+
+        if ($request->filled('content')) {
+            $updateData['content'] = $request->content;
+        }
+
+        if ($request->hasFile('media')) {
+            $path = $request->file('media')->store('idea-media', 'public');
+            $updateData['media_url'] = Storage::disk('public')->url($path);
+            $updateData['media_type'] = $request->file('media')->getMimeType();
+        }
+
+        $update = IdeaUpdate::create($updateData);
+
+        $idea->update(['last_interacted_at' => now()]);
+
+        return response()->json($update, 201);
+    }
+
+    public function destroyUpdate(Idea $idea, IdeaUpdate $update)
+    {
+        if ($idea->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        if ($update->media_url && !str_starts_with($update->media_url, 'http')) {
+            $relativePath = str_replace('/storage/', '', $update->media_url);
+            Storage::disk('public')->delete($relativePath);
+        }
+
+        $update->delete();
+
+        return response()->json(['success' => true]);
+    }
+
     public function destroy(Idea $idea)
     {
-        // Recursively delete children if needed, or just delete the idea.
-        // For now, let's just delete the idea.
         $idea->delete();
 
         return response()->json(['success' => true]);

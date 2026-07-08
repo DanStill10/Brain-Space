@@ -15,28 +15,48 @@
 
     <div id="ui-layer">
         
-        <!-- Mission Report Panel (Left Edge) -->
-        <div id="mission-report" class="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 w-72 sm:w-80 p-4 sm:p-8 flex flex-col space-y-3 sm:space-y-4 opacity-0 transition-all duration-500 translate-x-[-20px]">
-            <div class="border-l-2 border-blue-500/50 pl-4 sm:pl-6 space-y-1">
-                <div class="text-[10px] font-bold tracking-[0.3em] text-blue-400 uppercase opacity-50">Object Identification</div>
-                <h1 id="report-title" class="text-2xl sm:text-3xl font-light tracking-tight text-white leading-tight">--</h1>
-            </div>
+        <!-- Mission Report Card -->
+        <div id="mission-report" 
+             class="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 w-80 max-h-[75vh] flex flex-col opacity-0 transition-all duration-500 translate-x-[-20px] border border-white/10 rounded-xl overflow-hidden">
             
-            <div class="grid grid-cols-2 gap-2 sm:gap-4 pt-4 border-t border-white/10">
-                <div>
-                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Priority Index</div>
-                    <div id="report-priority" class="text-lg sm:text-xl font-mono text-white">0.0</div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Status</div>
-                    <div id="report-status" class="text-lg sm:text-xl font-mono text-emerald-400">Stable</div>
-                </div>
-            </div>
+            <div class="report-content">
+                <!-- Header -->
+                <div id="report-header" class="p-4 pb-2 flex-shrink-0 transition-all duration-500 opacity-0 translate-y-2">
+                    <div class="border-l-2 border-blue-500/50 pl-4 space-y-1 header-border-l">
+                        <div class="text-[10px] font-bold tracking-[0.3em] text-blue-400 uppercase opacity-50 sub-label">Object Identification</div>
+                        <h1 id="report-title" class="text-2xl font-light tracking-tight text-white leading-tight">--</h1>
+                    </div>
+                    
+                    <div id="report-specs" class="grid grid-cols-2 gap-4 pt-3 border-t border-white/10 mt-3 transition-all duration-500 opacity-0 translate-y-2 delay-75">
+                        <div>
+                            <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Priority Index</div>
+                            <div id="report-priority" class="text-lg font-mono text-white">0.0</div>
+                        </div>
+                        <div>
+                            <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">Status</div>
+                            <div id="report-status" class="text-lg font-mono text-emerald-400">Stable</div>
+                        </div>
+                    </div>
 
-            <div class="pt-2">
-                <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-2">Composition</div>
-                <div id="report-children" class="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-line">
-                    No sub-modules detected.
+                    <div id="report-composition" class="mt-2 transition-all duration-500 opacity-0 translate-y-2 delay-100">
+                        <div class="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase mb-1">Composition</div>
+                        <div id="report-children" class="text-xs font-mono text-slate-400 leading-relaxed whitespace-pre-line">
+                            No sub-modules detected.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Updates Feed -->
+                <div id="report-updates" class="px-4 pb-2 transition-all duration-500 opacity-0 translate-y-2 delay-150">
+                    <div class="text-center text-xs text-slate-500 py-4">No updates yet.</div>
+                </div>
+
+                <!-- Add Update Button -->
+                <div id="report-action" class="p-4 pt-2 flex-shrink-0 transition-all duration-500 opacity-0 translate-y-2 delay-200">
+                    <button id="add-update-btn" 
+                            class="w-full py-2 text-xs font-bold tracking-wider text-white/40 hover:text-white/80 border border-dashed border-white/10 hover:border-white/30 rounded-lg transition-all">
+                        + Log Update
+                    </button>
                 </div>
             </div>
         </div>
@@ -49,11 +69,12 @@
             <span class="absolute z-20 text-[11px] font-black tracking-[0.2em] text-black uppercase opacity-0 transition-opacity bh-label" style="text-shadow: 0 0 10px #fff, 0 0 15px #fff, 0 0 20px #fff, 0 0 25px #fff;">Void</span>
         </div>
 
-        <!-- The Escape Hatch (Moved OUTSIDE the modal!) -->
+        <!-- The Escape Hatch -->
         <button type="button" id="back-btn" class="hidden pointer-events-auto absolute top-4 left-4 bg-slate-800 border-2 border-slate-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-lg z-[100] transition-all hover:bg-slate-700">
             ← Back to Atmosphere
         </button>
 
+        <!-- Goal Modal -->
         <div id="goal-modal" class="modal w-11/12 max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl text-white absolute inset-0 m-auto">
             <h2 class="text-xl sm:text-2xl font-semibold mb-2 tracking-tight">What's a goal of yours right now?</h2>
             <p class="text-slate-400 text-sm mb-6">Drop a new idea into your atmosphere.</p>
@@ -114,12 +135,44 @@
             </form>
         </div>
 
+        <!-- Update Modal -->
+        <div id="update-modal" class="modal hidden-animate w-11/12 max-w-lg rounded-2xl p-6 shadow-2xl text-white absolute inset-0 m-auto z-[300]">
+            <h2 class="text-xl font-semibold mb-2 tracking-tight">General Update</h2>
+            <p class="text-slate-400 text-sm mb-4">Log a note or attach an image for this idea.</p>
+            
+            <textarea id="update-content" 
+                      class="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors resize-none"
+                      rows="4"
+                      placeholder="What's new with this idea?"></textarea>
+            
+            <div class="flex items-center gap-3 mt-4">
+                <input type="file" id="update-media" accept="image/*" hidden>
+                <button type="button" id="attach-btn" 
+                        class="w-10 h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-lg">
+                    📎
+                </button>
+                <span id="attach-filename" class="text-xs text-slate-400 truncate"></span>
+            </div>
+            
+            <div class="mt-6 flex justify-end gap-3">
+                <button type="button" id="cancel-update" 
+                        class="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors">
+                    Cancel
+                </button>
+                <button type="button" id="submit-update"
+                        class="px-5 py-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium rounded-lg shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Log Update
+                </button>
+            </div>
+        </div>
+
         <button id="add-btn" class="hidden w-12 h-12 sm:w-14 sm:h-14 bg-blue-500 rounded-full flex items-center justify-center text-white focus:outline-none hover:bg-blue-400 absolute bottom-6 right-6 sm:bottom-8 sm:right-8">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
         </button>
 
+        <!-- Auth Modal -->
         <div id="auth-modal" class="modal w-11/12 max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl text-white hidden-animate absolute inset-0 m-auto z-[200]">
             <h2 id="auth-title" class="text-xl sm:text-2xl font-semibold mb-2 tracking-tight">Access Your Brain Space</h2>
             <p id="auth-subtitle" class="text-slate-400 text-sm mb-6">Log in or create an account to stabilize your atmosphere.</p>

@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Your custom body, html, and canvas CSS goes here... */
 body, html {
     margin: 0;
     padding: 0;
@@ -47,6 +46,188 @@ canvas {
     transform: translateY(20px);
     pointer-events: none;
 }
+
+/* --- Mission Report Card --- */
+
+/* Permanent faint grid + HUD styling */
+#mission-report {
+    background-color: rgba(10, 15, 30, 0.7);
+    background-image:
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border: 1px solid var(--theme-color-glow-15, rgba(59, 130, 246, 0.15));
+    box-shadow: 
+        0 0 35px var(--theme-color-glow-08, rgba(59, 130, 246, 0.08)), 
+        inset 0 0 25px var(--theme-color-glow-05, rgba(59, 130, 246, 0.05));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: 
+        opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+        border-color 0.4s ease,
+        box-shadow 0.4s ease;
+}
+
+/* Corner brackets */
+#mission-report::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(to right, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 0 0 / 16px 2px no-repeat,
+        linear-gradient(to bottom, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 0 0 / 2px 16px no-repeat,
+        linear-gradient(to left, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 100% 0 / 16px 2px no-repeat,
+        linear-gradient(to bottom, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 100% 0 / 2px 16px no-repeat,
+        linear-gradient(to right, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 0 100% / 16px 2px no-repeat,
+        linear-gradient(to top, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 0 100% / 2px 16px no-repeat,
+        linear-gradient(to left, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 100% 100% / 16px 2px no-repeat,
+        linear-gradient(to top, var(--theme-color-glow, rgba(96,165,250,0.35)) 2px, transparent 2px) 100% 100% / 2px 16px no-repeat;
+    transition: background 0.4s ease;
+}
+
+/* Light wave — brightens grid fibers as it sweeps through */
+#mission-report::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 36px;
+    top: -36px;
+    left: 0;
+    background-color: transparent;
+    background-image:
+        linear-gradient(90deg, rgba(255,255,255,0.18) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,0.18) 1px, transparent 1px);
+    background-size: 20px 20px;
+    mask: linear-gradient(180deg,
+        transparent 0%,
+        transparent 10%,
+        white 25%,
+        white 75%,
+        transparent 90%,
+        transparent 100%
+    );
+    -webkit-mask: linear-gradient(180deg,
+        transparent 0%,
+        transparent 10%,
+        white 25%,
+        white 75%,
+        transparent 90%,
+        transparent 100%
+    );
+    animation: waveSweep 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+#mission-report.active #report-header,
+#mission-report.active #report-specs,
+#mission-report.active #report-composition,
+#mission-report.active #report-updates,
+#mission-report.active #report-action {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+@keyframes waveSweep {
+    0%   { top: -36px; }
+    100% { top: 100%; }
+}
+
+.header-border-l {
+    border-left-color: var(--theme-color-glow, #3b82f6) !important;
+}
+.sub-label {
+    color: var(--theme-color-glow, #60a5fa) !important;
+}
+
+/* Content sits above grid */
+.report-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+/* Updates feed */
+#report-updates {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+#report-updates::-webkit-scrollbar {
+    width: 4px;
+}
+#report-updates::-webkit-scrollbar-track {
+    background: transparent;
+}
+#report-updates::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+}
+
+.update-entry {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.update-entry:last-child {
+    border-bottom: none;
+}
+.update-content {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: rgba(255,255,255,0.85);
+    white-space: pre-wrap;
+}
+.update-timestamp {
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.3);
+    margin-top: 4px;
+}
+.update-media {
+    margin-top: 8px;
+    border-radius: 8px;
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.update-media:hover {
+    opacity: 0.9;
+}
+
+/* Lightbox overlay for media */
+.lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.lightbox-overlay.show {
+    opacity: 1;
+}
+.lightbox-overlay img,
+.lightbox-overlay video {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 8px;
+}
+
 #black-hole.active {
     transform: scale(1.12);
 }
@@ -55,7 +236,6 @@ canvas {
 }
 #black-hole.active .bh-label {
     opacity: 1;
-    /* High contrast text shadow is handled inline in blade, but we can reinforce here */
 }
 #black-hole.active .bh-ring {
     border-color: rgba(255,255,255,0.5);
