@@ -15,6 +15,8 @@ class IdeaController extends Controller
                     ->where('is_completed', false)
                     ->with(['children' => function($query) {
                         $query->where('is_completed', false);
+                    }, 'updates' => function($query) {
+                        $query->latest()->take(5);
                     }])
                     ->get();
 

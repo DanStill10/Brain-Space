@@ -27,6 +27,22 @@ const logoutBtn = document.getElementById('logout-btn');
 let isLoginMode = true;
 const isAuthenticated = document.querySelector('meta[name="auth-check"]')?.getAttribute('content') === 'true';
 
+function anyModalOpen() {
+    return !modal.classList.contains('hidden-animate')
+        || !updateModal.classList.contains('hidden-animate')
+        || !authModal.classList.contains('hidden-animate');
+}
+
+const modalOverlay = document.getElementById('modal-overlay');
+
+function showOverlay() {
+    modalOverlay.classList.remove('hidden-animate');
+}
+
+function hideOverlay() {
+    modalOverlay.classList.add('hidden-animate');
+}
+
 // Mission Report Elements
 const missionReport = document.getElementById('mission-report');
 const reportTitle = document.getElementById('report-title');
@@ -181,7 +197,11 @@ function updateMissionReport(idea) {
 
     missionReport.dataset.ideaId = idea.id;
 
-    loadIdeaDetails(idea.id);
+    if (idea.updates) {
+        renderUpdates(idea.updates);
+    } else {
+        loadIdeaDetails(idea.id);
+    }
 }
 
 async function loadIdeaDetails(ideaId) {
@@ -192,7 +212,11 @@ async function loadIdeaDetails(ideaId) {
         });
         if (!response.ok) throw new Error('Failed');
         const data = await response.json();
-        renderUpdates(data.updates || []);
+        const updates = data.updates || [];
+        renderUpdates(updates);
+        const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
+        const node = activeArray.find(i => i.id == ideaId);
+        if (node) node.updates = updates;
     } catch (err) {
         reportUpdates.innerHTML = '<div class="text-center text-xs text-rose-400 py-4">Failed to load updates.</div>';
     }
@@ -240,10 +264,12 @@ function showUpdateModal() {
     submitUpdateBtn.disabled = false;
     submitUpdateBtn.textContent = 'Log Update';
     updateModal.classList.remove('hidden-animate');
+    showOverlay();
 }
 
 function hideUpdateModal() {
     updateModal.classList.add('hidden-animate');
+    hideOverlay();
 }
 
 async function submitUpdate() {
@@ -484,6 +510,7 @@ function showModal() {
     blackHole.classList.add('opacity-0');
     focusedIdea = null;
     updateMissionReport(null);
+    showOverlay();
     setTimeout(() => input.focus(), 100);
 }
 
@@ -495,6 +522,7 @@ function hideModal() {
     colorInput.value = '';
     priorityInput.value = '0';
     input.blur();
+    hideOverlay();
 }
 
 cancelBtn.addEventListener('click', hideModal);
@@ -509,8 +537,8 @@ function getPointerPos(e) {
 async function handleStart(e) {
     if (viewState === 'TRANSITION_IN' || viewState === 'TRANSITION_OUT') return;
 
-    if (ideas.length > 0 && !modal.classList.contains('hidden-animate')) {
-        hideModal();
+    if (ideas.length > 0 && anyModalOpen()) {
+        if (!modal.classList.contains('hidden-animate')) hideModal();
         return;
     }
 
@@ -590,7 +618,7 @@ function handleMove(e) {
         }
     } else {
         // Hover detection for focusedIdea (mouse only)
-        if (e.type === 'mousemove' && modal.classList.contains('hidden-animate')) {
+        if (e.type === 'mousemove' && !anyModalOpen()) {
             const pos = getPointerPos(e);
             const activeArray = viewState === 'INSIDE' ? zoomedIdeas : ideas;
             let found = false;
@@ -720,6 +748,7 @@ async function loadIdeas() {
         if (response.status === 401) {
             authModal.classList.remove('hidden-animate');
             addBtn.classList.add('hidden');
+            showOverlay();
             return;
         }
 
@@ -750,6 +779,7 @@ async function loadIdeas() {
             if (item.children && item.children.length > 0) {
                 item.children.forEach(child => newParent.absorb(child));
             }
+            newParent.updates = item.updates || [];
             ideas.push(newParent);
         });
 
