@@ -68,7 +68,7 @@
         <div id="modal-overlay" class="hidden-animate"></div>
 
         <!-- Goal Modal -->
-        <div id="goal-modal" class="modal hidden-animate w-11/12 max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl text-white absolute inset-0 m-auto">
+        <div id="goal-modal" class="modal hidden-animate w-11/12 max-w-md rounded-2xl p-4 sm:p-6 shadow-2xl text-white absolute inset-0 m-auto z-[300]">
             <h2 class="text-xl sm:text-2xl font-semibold mb-2 tracking-tight">What's a goal of yours right now?</h2>
             <p class="text-slate-400 text-sm mb-6">Drop a new idea into your atmosphere.</p>
             
@@ -182,9 +182,12 @@
                     <input type="password" id="auth-password-confirm" class="form-input" placeholder="Confirm Password">
                 </div>
 
-                <div class="flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
+                <div class="mt-6 flex justify-end gap-3">
+                    <button type="button" id="auth-cancel-btn" class="btn-ghost">Cancel</button>
+                    <button type="submit" id="auth-submit-btn" class="btn-primary">Log In</button>
+                </div>
+                <div class="mt-3 text-center">
                     <button type="button" id="auth-toggle-btn" class="auth-toggle">Need an account? Register</button>
-                    <button type="submit" id="auth-submit-btn" class="btn-primary w-full sm:w-auto">Log In</button>
                 </div>
             </form>
         </div>

@@ -43,6 +43,17 @@ function hideOverlay() {
     modalOverlay.classList.add('hidden-animate');
 }
 
+function hideAuthModal() {
+    authModal.classList.add('hidden-animate');
+    authNameGroup.classList.add('hidden');
+    authConfirmGroup.classList.add('hidden');
+    authToggleBtn.textContent = 'Need an account? Register';
+    isLoginMode = true;
+    authTitle.textContent = 'Access Your Brain Space';
+    authSubmitBtn.textContent = 'Log In';
+    hideOverlay();
+}
+
 // Mission Report Elements
 const missionReport = document.getElementById('mission-report');
 const reportTitle = document.getElementById('report-title');
@@ -528,6 +539,12 @@ function hideModal() {
 cancelBtn.addEventListener('click', hideModal);
 addBtn.addEventListener('click', showModal);
 
+modalOverlay.addEventListener('click', () => {
+    if (!modal.classList.contains('hidden-animate')) hideModal();
+    if (!updateModal.classList.contains('hidden-animate')) hideUpdateModal();
+    if (!authModal.classList.contains('hidden-animate')) hideAuthModal();
+});
+
 function getPointerPos(e) {
     const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
     if (touch) return { x: touch.clientX, y: touch.clientY };
@@ -539,6 +556,8 @@ async function handleStart(e) {
 
     if (ideas.length > 0 && anyModalOpen()) {
         if (!modal.classList.contains('hidden-animate')) hideModal();
+        else if (!updateModal.classList.contains('hidden-animate')) hideUpdateModal();
+        else if (!authModal.classList.contains('hidden-animate')) hideAuthModal();
         return;
     }
 
@@ -845,6 +864,8 @@ form.addEventListener('submit', async (e) => {
 });
 
 // --- Auth Logic ---
+document.getElementById('auth-cancel-btn').addEventListener('click', hideAuthModal);
+
 authToggleBtn.addEventListener('click', () => {
     isLoginMode = !isLoginMode;
     if (isLoginMode) {
